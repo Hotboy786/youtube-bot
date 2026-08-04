@@ -14,6 +14,7 @@ REQUESTS_FILE = "pending_requests.json"
 USERS_FILE = "users.json"
 ACTIVITY_FILE = "activity_logs.json"
 TASKS_FILE = "task_history.json"
+VIEW_CALC_FILE = "view_calculations.json"
 
 # Persistent User Database Helper Functions
 def load_users():
@@ -98,6 +99,23 @@ def save_task_history(history_list):
     try:
         with open(TASKS_FILE, "w") as f:
             json.dump(history_list, f)
+    except Exception:
+        pass
+
+# Dedicated View Calculation Storage Helper Functions
+def load_view_calculations():
+    if os.path.exists(VIEW_CALC_FILE):
+        try:
+            with open(VIEW_CALC_FILE, "r") as f:
+                return json.load(f)
+        except Exception:
+            return []
+    return []
+
+def save_view_calculations(calc_list):
+    try:
+        with open(VIEW_CALC_FILE, "w") as f:
+            json.dump(calc_list, f)
     except Exception:
         pass
 
@@ -281,7 +299,7 @@ st.markdown("---")
 tab_dash, tab_history = st.tabs(["🚀 Automation Dashboard", "📊 Live Task & View History"])
 
 with tab_dash:
-    st.info("ℹ️ **Shorts Feed Simulation:** Background threads emulate incoming views from the YouTube Shorts feed, playing up to **50% (half) of the video duration** per session.")
+    st.info("ℹ️ **Shorts Feed Simulation:** Background tabs emulate incoming views from the YouTube Shorts feed, playing up to **50% (half) of the video duration** per session.")
 
     st.subheader("Step 1: Enter & Submit YouTube Short URL")
     url_input = st.text_input("YouTube Short / Video URL:")
@@ -352,8 +370,8 @@ with tab_dash:
             with st.spinner("Fetching real video details from YouTube..."):
                 video_title, real_before_views = get_real_youtube_info(yt_url)
             
+            # 1. Update Task History file
             task_history_list = load_task_history()
-            
             history_record = {
                 "user": st.session_state.username,
                 "title": video_title,
@@ -368,6 +386,21 @@ with tab_dash:
             task_history_list.append(history_record)
             save_task_history(task_history_list)
             record_index = len(task_history_list) - 1
+
+            # 2. Initialize Dedicated View Calculation File Record
+            calc_list = load_view_calculations()
+            calc_record = {
+                "user": st.session_state.username,
+                "title": video_title,
+                "url": yt_url,
+                "requested_views": desired_views,
+                "generated_views": 0,
+                "status": "In Progress 🔄",
+                "timestamp": current_pkt_time.strftime('%I:%M %p, %d %b %Y')
+            }
+            calc_list.append(calc_record)
+            save_view_calculations(calc_list)
+            calc_index = len(calc_list) - 1
 
             log_activity(st.session_state.username, f"Started Shorts feed task: {desired_views} views for '{video_title}'")
             
@@ -394,7 +427,6 @@ with tab_dash:
                     current_simulated_views = min(desired_views, i * step_increment)
                     progress_percent = int((current_simulated_views / desired_views) * 100)
                     
-                    # Embed background tab playing up to half duration simulation (muted embedded iframe loop)
                     background_iframe.markdown(f"""
                         <iframe width="100%" height="180" src="https://www.youtube.com/embed/{vid_id}?autoplay=1&mute=1&loop=1&playlist={vid_id}" 
                         frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen>
@@ -402,6 +434,7 @@ with tab_dash:
                         <p style='color: #00ffaa; font-size: 13px; text-align:center;'><b>[Background Tab Active]</b> Playing Shorts Feed session (50% target duration match)...</p>
                     """, unsafe_allow_html=True)
                     
+                    # Update Task History
                     task_history_list = load_task_history()
                     if len(task_history_list) > record_index:
                         task_history_list[record_index]["current"] = real_before_views + current_simulated_views
@@ -409,27 +442,40 @@ with tab_dash:
                         if current_simulated_views >= desired_views:
                             task_history_list[record_index]["status"] = "Completed ✅"
                         save_task_history(task_history_list)
+
+                    # Update Dedicated View Calculations File
+                    calc_list = load_view_calculations()
+                    if len(calc_list) > calc_index:
+                        calc_list[calc_index]["generated_views"] = current_simulated_views
+                        if current_simulated_views >= desired_views:
+                            calc_list[calc_index]["status"] = "Completed ✅"
+                        save_view_calculations(calc_list)
                     
                     progress_bar.progress(progress_percent)
                     status_text.text(f"Processing rate: 500 views / hour from Shorts feed...")
                     
-                    # Update Panel 2 with comprehensive real-time details
                     live_metrics_box.markdown(f"""
                         - **Video Title:** {video_title}
                         - **Traffic Source:** Shorts Feed
                         - **Initial Views (Before):** {real_before_views:,}
                         - **Views Generated:** <span style='color: #4CAF50; font-size: 18px;'><b>+{current_simulated_views:,}</b></span>
                         - **Current Total Views:** **{real_before_views + current_simulated_views:,}**
-                        - **Target Views:** {desired_views:,}
+                        - **Target Views (Requested):** {desired_views:,}
                         - **Retention Metric:** 50% Half Duration Reached
                     """, unsafe_allow_html=True)
                     
                     time.sleep(0.15)
                 
+                # Finalize Task & Calculations Status
                 task_history_list = load_task_history()
                 if len(task_history_list) > record_index:
                     task_history_list[record_index]["status"] = "Completed ✅"
                     save_task_history(task_history_list)
+
+                calc_list = load_view_calculations()
+                if len(calc_list) > calc_index:
+                    calc_list[calc_index]["status"] = "Completed ✅"
+                    save_view_calculations(calc_list)
 
                 log_activity(st.session_state.username, f"Completed Shorts feed task successfully for '{video_title}'")
                 st.success(f"Task successfully completed! All {desired_views} views registered from Shorts feed.")
@@ -439,6 +485,12 @@ with tab_dash:
                 if len(task_history_list) > record_index:
                     task_history_list[record_index]["status"] = "Failed / Stopped ❌"
                     save_task_history(task_history_list)
+
+                calc_list = load_view_calculations()
+                if len(calc_list) > calc_index:
+                    calc_list[calc_index]["status"] = "Failed / Stopped ❌"
+                    save_view_calculations(calc_list)
+
                 log_activity(st.session_state.username, f"Task interrupted for '{video_title}'")
                 st.error("Task interrupted.")
 
@@ -446,6 +498,21 @@ with tab_history:
     st.subheader("📊 Live Task View Tracking History & Activity Logs")
     st.write("Monitor real-time progress, video titles, starting views, and system activities.")
     
+    st.markdown("### 🧮 Dedicated View Calculations (`view_calculations.json`)")
+    calc_records = load_view_calculations()
+    if len(calc_records) == 0:
+        st.info("No view calculation records found yet.")
+    else:
+        for idx, calc in enumerate(reversed(calc_records)):
+            st.markdown(f"**🎬 {calc['title']}** (User: `{calc['user']}`)")
+            c_cols = st.columns([2, 1, 1, 1, 1])
+            c_cols[0].markdown(f"🔗 [URL]({calc['url']})")
+            c_cols[1].markdown(f"Requested: **{calc['requested_views']:,}**")
+            c_cols[2].markdown(f"Generated: **+{calc['generated_views']:,}**")
+            c_cols[3].markdown(f"Status: **{calc['status']}**")
+            c_cols[4].markdown(f"Time: {calc['timestamp']}")
+            st.markdown("---")
+
     st.markdown("### 📝 Permanent User Activity Audit Trail")
     all_activities = load_activity_logs()
     if len(all_activities) == 0:
