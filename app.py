@@ -11,6 +11,7 @@ st.set_page_config(page_title="Cloud YouTube Automation Bot", page_icon="🚀", 
 
 REQUESTS_FILE = "pending_requests.json"
 USERS_FILE = "users.json"
+ACTIVITY_FILE = "activity_logs.json"
 
 # Persistent User Database Helper Functions
 def load_users():
@@ -47,6 +48,40 @@ def save_pending_requests(requests_list):
     except Exception:
         pass
 
+# Persistent Activity Logger Helper Functions
+def log_activity(username, action_details):
+    logs = []
+    if os.path.exists(ACTIVITY_FILE):
+        try:
+            with open(ACTIVITY_FILE, "r") as f:
+                logs = json.load(f)
+        except Exception:
+            logs = []
+    
+    pkt_zone = timezone(timedelta(hours=5))
+    timestamp = datetime.now(pkt_zone).strftime('%I:%M %p, %d %b %Y')
+    
+    logs.append({
+        "username": username,
+        "action": action_details,
+        "time": timestamp
+    })
+    
+    try:
+        with open(ACTIVITY_FILE, "w") as f:
+            json.dump(logs, f)
+    except Exception:
+        pass
+
+def load_activity_logs():
+    if os.path.exists(ACTIVITY_FILE):
+        try:
+            with open(ACTIVITY_FILE, "r") as f:
+                return json.load(f)
+        except Exception:
+            return []
+    return []
+
 # Initialize session state data
 if "users" not in st.session_state:
     st.session_state.users = load_users()
@@ -54,9 +89,6 @@ if "users" not in st.session_state:
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.username = ""
-
-if "task_logs" not in st.session_state:
-    st.session_state.task_logs = []
 
 if "task_history" not in st.session_state:
     st.session_state.task_history = []
@@ -88,7 +120,6 @@ def get_real_youtube_info(url):
         return title, real_views
         
     try:
-        # Fetch public oEmbed data for title
         oembed_url = f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={vid_id}&format=json"
         req = urllib.request.Request(oembed_url, headers={'User-Agent': 'Mozilla/5.0'})
         with urllib.request.urlopen(req, timeout=3) as response:
@@ -99,17 +130,14 @@ def get_real_youtube_info(url):
         pass
         
     try:
-        # Fetch public watch page to parse current real view count string if available
         watch_url = f"https://www.youtube.com/watch?v={vid_id}"
         req = urllib.request.Request(watch_url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
         with urllib.request.urlopen(req, timeout=3) as response:
             html = response.read().decode('utf-8', errors='ignore')
-            # Search for view count patterns in YouTube's embedded JSON metadata
             view_match = re.search(r'"viewCount"\s*:\s*"(\d+)"', html)
             if view_match:
                 real_views = int(view_match.group(1))
             else:
-                # Fallback random baseline if blocked by bot protection
                 import random
                 real_views = random.randint(1200, 8500)
     except Exception:
@@ -118,7 +146,6 @@ def get_real_youtube_info(url):
         
     return title, real_views
 
-# Helper function to check valid YouTube URL
 def is_valid_youtube_url(url):
     return bool(get_youtube_video_id(url))
 
@@ -139,6 +166,7 @@ if not st.session_state.logged_in:
             if username in active_users and active_users[username] == password:
                 st.session_state.logged_in = True
                 st.session_state.username = username
+                log_activity(username, "Logged into the system successfully.")
                 st.rerun()
             elif username in [r["username"] for r in current_pending]:
                 st.warning("Your request is still pending admin approval.")
@@ -158,6 +186,7 @@ if not st.session_state.logged_in:
                 else:
                     current_pending.append({"username": req_user, "password": req_pass})
                     save_pending_requests(current_pending)
+                    log_activity(req_user, "Submitted account access request.")
                     st.success("Request sent successfully! Please wait for the admin to approve it.")
             else:
                 st.warning("Please fill in both username and password.")
@@ -183,25 +212,29 @@ if st.session_state.username == "admin":
                 save_users(active_users)
                 current_pending.pop(idx)
                 save_pending_requests(current_pending)
+                log_activity("admin", f"Approved account for user: {r_user}")
                 st.rerun()
             if col2.button(f"Reject", key=f"rej_{idx}"):
                 current_pending.pop(idx)
                 save_pending_requests(current_pending)
+                log_activity("admin", f"Rejected account for user: {r_user}")
                 st.rerun()
                 
     st.sidebar.markdown("---")
-    st.sidebar.subheader("🔔 Admin Activity Notifications")
-    if len(st.session_state.task_logs) == 0:
-        st.sidebar.write("No tasks submitted yet.")
+    st.sidebar.subheader("📋 System Activity File Logs")
+    all_activities = load_activity_logs()
+    if len(all_activities) == 0:
+        st.sidebar.write("No activity recorded yet.")
     else:
-        for log in reversed(st.session_state.task_logs[-10:]):
-            st.sidebar.text(log)
+        for act in reversed(all_activities[-10:]):
+            st.sidebar.text(f"[{act['time']}] {act['username']}: {act['action']}")
 
 # Main Dashboard App
 st.title("🚀 Cloud YouTube Automation Bot")
 st.write(f"Logged in as: **{st.session_state.username}**")
 
 if st.button("Logout"):
+    log_activity(st.session_state.username, "Logged out of the system.")
     st.session_state.logged_in = False
     st.session_state.username = ""
     st.rerun()
@@ -236,9 +269,11 @@ with tab_dash:
     if submit_url_btn:
         if is_valid_youtube_url(url_input):
             st.session_state.validated_url = url_input
+            log_activity(st.session_state.username, f"Validated YouTube URL: {url_input}")
             st.success("URL verified and accepted!")
         else:
             st.session_state.validated_url = ""
+            log_activity(st.session_state.username, f"Submitted invalid YouTube URL: {url_input}")
             st.error("Invalid YouTube URL! Please check the link.")
             
             audio_html = """
@@ -282,7 +317,6 @@ with tab_dash:
 
         st.markdown("---")
         if st.button("Step 4: Start Task & Run Live Views"):
-            # Fetch real title and real starting view count from YouTube
             with st.spinner("Fetching real video data from YouTube..."):
                 video_title, real_before_views = get_real_youtube_info(yt_url)
             
@@ -299,8 +333,7 @@ with tab_dash:
             st.session_state.task_history.append(history_record)
             record_index = len(st.session_state.task_history) - 1
 
-            submission_msg = f"[{st.session_state.username}] Target: {desired_views} views for {video_title}"
-            st.session_state.task_logs.append(submission_msg)
+            log_activity(st.session_state.username, f"Started task: {desired_views} views for '{video_title}' ({yt_url})")
             
             progress_bar = st.progress(0)
             status_text = st.empty()
@@ -314,7 +347,6 @@ with tab_dash:
                 current_simulated_views = min(desired_views, i * step_increment)
                 progress_percent = int((current_simulated_views / desired_views) * 100)
                 
-                # Increment views starting from the actual fetched YouTube view count
                 st.session_state.task_history[record_index]["current"] = real_before_views + current_simulated_views
                 
                 progress_bar.progress(progress_percent)
@@ -323,17 +355,26 @@ with tab_dash:
                 time.sleep(0.15)
                 
             st.session_state.task_history[record_index]["status"] = "Completed ✅"
-            completion_msg = f"[DONE] Task processed successfully for: {video_title}"
-            st.session_state.task_logs.append(completion_msg)
+            log_activity(st.session_state.username, f"Completed task successfully for '{video_title}'")
             
             st.success(f"Task successfully completed! All {desired_views} views delivered. Finished at {completion_time.strftime('%I:%M %p')} PKT.")
 
 with tab_history:
-    st.subheader("📊 Live Task View Tracking History")
-    st.write("Monitor real-time progress, video titles, starting views, and increasing target counts.")
+    st.subheader("📊 Live Task View Tracking History & Activity Logs")
+    st.write("Monitor real-time progress, video titles, starting views, and system activities.")
     
+    st.markdown("### 📝 Permanent User Activity Audit Trail")
+    all_activities = load_activity_logs()
+    if len(all_activities) == 0:
+        st.info("No activity logs recorded yet.")
+    else:
+        for act in reversed(all_activities):
+            st.text(f"[{act['time']}] User: {act['username']} -> Action: {act['action']}")
+            
+    st.markdown("---")
+    st.subheader("🎯 Video View Progress Tracking")
     if len(st.session_state.task_history) == 0:
-        st.info("No task history recorded yet. Run a task in the Automation Dashboard to view real-time statistics here.")
+        st.info("No tasks executed in this session yet.")
     else:
         for idx, item in enumerate(reversed(st.session_state.task_history)):
             with st.container():
