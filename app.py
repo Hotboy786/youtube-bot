@@ -57,7 +57,7 @@ def save_pending_requests(requests_list):
     except Exception:
         pass
 
-# Persistent Activity Logger Helper Functions
+# Permanent Persistent Activity Logger Helper Functions (Stores Forever for Admin)
 def log_activity(username, action_details):
     logs = []
     if os.path.exists(ACTIVITY_FILE):
@@ -68,7 +68,7 @@ def log_activity(username, action_details):
             logs = []
     
     pkt_zone = timezone(timedelta(hours=5))
-    timestamp = datetime.now(pkt_zone).strftime('%I:%M %p, %d %b %Y')
+    timestamp = datetime.now(pkt_zone).strftime('%I:%M:%S %p, %d %b %Y')
     
     logs.append({
         "username": username,
@@ -244,7 +244,6 @@ def run_background_worker(record_index, calc_index, analytics_index, desired_vie
             
             # Simulate 5 concurrent threads executing for this step cycle
             for t_id in range(1, active_threads_count + 1):
-                # Determine if view was successfully generated or dropped/skipped in this thread loop
                 success_status = "Generated & Added ✅" if (step % 5 != 0 or t_id % 2 == 0) else "Skipped/Dropped ⚠️"
                 
                 detailed_logs = load_detailed_thread_logs()
@@ -355,12 +354,12 @@ if st.session_state.username == ADMIN_EMAIL:
                 st.rerun()
                 
     st.sidebar.markdown("---")
-    st.sidebar.subheader("📋 System Activity Logs")
-    all_activities = load_activity_logs()
-    if len(all_activities) == 0:
+    st.sidebar.subheader("📋 Recent System Activity Logs")
+    all_activities_sidebar = load_activity_logs()
+    if len(all_activities_sidebar) == 0:
         st.sidebar.write("No activity recorded yet.")
     else:
-        for act in reversed(all_activities[-10:]):
+        for act in reversed(all_activities_sidebar[-10:]):
             st.sidebar.text(f"[{act['time']}] {act['username']}: {act['action']}")
 
 # Main Dashboard App
@@ -389,7 +388,7 @@ with vid_col2:
 st.markdown("---")
 
 # STRICT TAB VISIBILITY RULE: 
-# - Admin sees Automation Dashboard, History, Admin Thread Analytics, User Activity, and the New Granular Thread & View Logs Panel.
+# - Admin sees Automation Dashboard, History, Admin Thread Analytics, User Activity, and the Granular Thread & View Logs Panel.
 # - Regular users ONLY see the Automation Dashboard.
 if st.session_state.username == ADMIN_EMAIL:
     tab_dash, tab_history, tab_admin_threads, tab_user_activity, tab_granular_threads = st.tabs([
@@ -600,17 +599,27 @@ if st.session_state.username == ADMIN_EMAIL:
                     st.markdown(f"**Execution Status:** {entry['status']}")
                     st.markdown("---")
 
-# Admin-Only Dedicated User Activity & Monitoring Panel (`activity_logs.json`)
+# Admin-Only Dedicated Permanent User Activity & Monitoring Panel (`activity_logs.json`)
 if st.session_state.username == ADMIN_EMAIL:
     with tab_user_activity:
-        st.subheader("👥 Dedicated User Activity & Action Monitoring Panel")
-        st.info("ℹ️ Tracks every user action and sign-in across the platform in real-time. Accessible exclusively to the administrator.")
+        st.subheader("👥 Dedicated Permanent User Activity & Action Monitoring Panel")
+        st.info("ℹ️ Records and stores **every single user action, sign-in, and activity forever** in `activity_logs.json`. Accessible exclusively to the administrator.")
         
         all_activities = load_activity_logs()
         if len(all_activities) == 0:
             st.warning("No user activity recorded yet.")
         else:
-            st.markdown(f"**Total Tracked System Actions:** `{len(all_activities)}`")
+            st.markdown(f"**Total Tracked Permanent System Actions:** `{len(all_activities)}`")
+            
+            if st.button("Clear All Activity Logs", key="clear_act_logs"):
+                try:
+                    with open(ACTIVITY_FILE, "w") as f:
+                        json.dump([], f)
+                    st.success("Activity logs cleared successfully!")
+                    st.rerun()
+                except Exception:
+                    pass
+
             st.markdown("---")
             
             for act in reversed(all_activities):
@@ -632,7 +641,7 @@ if st.session_state.username == ADMIN_EMAIL:
         else:
             st.markdown(f"**Total Granular Logs Recorded:** `{len(detailed_logs)}`")
             
-            if st.button("Clear Granular Logs"):
+            if st.button("Clear Granular Logs", key="clear_granular_logs"):
                 save_detailed_thread_logs([])
                 st.success("Granular logs cleared successfully!")
                 st.rerun()
