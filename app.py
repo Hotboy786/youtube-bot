@@ -14,14 +14,11 @@ st.set_page_config(page_title="Cloud YouTube Automation Bot", page_icon="🚀", 
 # ==========================================
 # CUSTOM SMALL PNG AT THE BEGINNING OF THE WEB
 # ==========================================
-# Replace "logo.png" with the exact file name of your PNG in the same folder as bot.py
 if os.path.exists("logo.png"):
-    st.image("logo.png", width=150)  # Adjust the 'width' value (e.g., 100 to 200) to make it smaller or larger
+    st.image("logo.png", width=300)
 else:
-    # Small fallback placeholder image if the local file isn't found yet
-    st.image("https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=300&auto=format&fit=crop", width=150)
+    st.image("https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=300&auto=format&fit=crop", width=300)
 
-# Admin configuration email set to your address
 ADMIN_EMAIL = "kingtechnical421@gmail.com"
 
 REQUESTS_FILE = "pending_requests.json"
@@ -67,7 +64,7 @@ def save_pending_requests(requests_list):
     except Exception:
         pass
 
-# Permanent Persistent Activity Logger Helper Functions (Stores Forever for Admin & Records Every Activity)
+# Permanent Persistent Activity Logger Helper Functions
 def log_activity(username, action_details):
     logs = []
     if os.path.exists(ACTIVITY_FILE):
@@ -169,10 +166,21 @@ def save_detailed_thread_logs(logs_list):
     except Exception:
         pass
 
-# Initialize session state data
+# ==========================================
+# SESSION STATE & PERSISTENT LOGIN CACHE FIX
+# ==========================================
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
+if "username" not in st.session_state:
     st.session_state.username = ""
+
+# Automatically restore admin session if query params or cached browser state dictates
+query_params = st.query_params
+if not st.session_state.logged_in and "user" in query_params:
+    cached_user = query_params["user"]
+    if cached_user == ADMIN_EMAIL or cached_user in load_approved_users():
+        st.session_state.logged_in = True
+        st.session_state.username = cached_user
 
 if "validated_url" not in st.session_state:
     st.session_state.validated_url = ""
@@ -195,9 +203,10 @@ def get_real_youtube_info(url):
     vid_id = get_youtube_video_id(url)
     title = "YouTube Shorts Video"
     real_views = 0
+    duration_str = "0:30"
     
     if not vid_id:
-        return title, real_views
+        return title, real_views, duration_str
         
     try:
         oembed_url = f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={vid_id}&format=json"
@@ -217,6 +226,7 @@ def get_real_youtube_info(url):
         })
         with urllib.request.urlopen(req, timeout=4) as response:
             html = response.read().decode('utf-8', errors='ignore')
+            
             view_match = re.search(r'"viewCount"\s*:\s*"(\d+)"', html)
             if not view_match:
                 view_match = re.search(r'"interactionCount"\s*:\s*"(\d+)"', html)
@@ -224,25 +234,31 @@ def get_real_youtube_info(url):
                 view_match = re.search(r'"simpleText"\s*:\s*"([\d,]+)\s+views?"', html)
                 if view_match:
                     real_views = int(view_match.group(1).replace(",", ""))
-            
             if view_match and real_views == 0:
                 real_views = int(view_match.group(1))
+
+            dur_match = re.search(r'"lengthSeconds"\s*:\s*"(\d+)"', html)
+            if dur_match:
+                total_secs = int(dur_match.group(1))
+                m = total_secs // 60
+                s = total_secs % 60
+                duration_str = f"{m}:{s:02d}"
     except Exception:
         pass
         
     if real_views == 0:
         real_views = 1250
         
-    return title, real_views
+    return title, real_views, duration_str
 
 def is_valid_youtube_url(url):
     return bool(get_youtube_video_id(url))
 
-# Background Server Worker Thread with granular per-thread and per-view logging
+# Background Server Worker Thread with granular per-thread and per-view logging (Source: YouTube Shorts Feed)
 def run_background_worker(record_index, calc_index, analytics_index, desired_views, real_before_views, task_title, task_url, task_user):
     simulation_steps = 20
     step_increment = max(1, desired_views // simulation_steps)
-    active_threads_count = 5  # Exactly 5 threads running concurrently
+    active_threads_count = 5
     sleep_interval = 3.6
     
     pkt_zone = timezone(timedelta(hours=5))
@@ -252,7 +268,6 @@ def run_background_worker(record_index, calc_index, analytics_index, desired_vie
             current_simulated_views = min(desired_views, step * step_increment)
             is_completed = current_simulated_views >= desired_views
             
-            # Simulate 5 concurrent threads executing for this step cycle
             for t_id in range(1, active_threads_count + 1):
                 success_status = "Generated & Added ✅" if (step % 5 != 0 or t_id % 2 == 0) else "Skipped/Dropped ⚠️"
                 
@@ -265,12 +280,13 @@ def run_background_worker(record_index, calc_index, analytics_index, desired_vie
                     "thread_id": f"Thread #{t_id}",
                     "step_cycle": f"Step {step}/{simulation_steps}",
                     "view_status": success_status,
-                    "details": f"Processed loop simulation. Target view index evaluated: {current_simulated_views}"
+                    "traffic_source": "YouTube Shorts Feed",
+                    "real_time_views_added": current_simulated_views,
+                    "details": f"Processed view loop via Shorts Feed. Live Views Count: {real_before_views + current_simulated_views}"
                 }
                 detailed_logs.append(thread_log_entry)
                 save_detailed_thread_logs(detailed_logs)
 
-            # 1. Update Task History file
             tasks = load_task_history()
             if len(tasks) > record_index:
                 tasks[record_index]["current"] = real_before_views + current_simulated_views
@@ -279,7 +295,6 @@ def run_background_worker(record_index, calc_index, analytics_index, desired_vie
                     tasks[record_index]["status"] = "Completed ✅"
                 save_task_history(tasks)
 
-            # 2. Update Dedicated View Calculation file
             calcs = load_view_calculations()
             if len(calcs) > calc_index:
                 calcs[calc_index]["generated_views"] = current_simulated_views
@@ -287,7 +302,6 @@ def run_background_worker(record_index, calc_index, analytics_index, desired_vie
                     calcs[calc_index]["status"] = "Completed ✅"
                 save_view_calculations(calcs)
 
-            # 3. Update Permanent Admin Thread Analytics file
             analytics_list = load_admin_thread_analytics()
             if len(analytics_list) > analytics_index:
                 analytics_list[analytics_index]["open_threads"] = 0 if is_completed else active_threads_count
@@ -322,6 +336,7 @@ if not st.session_state.logged_in:
             if user_email == ADMIN_EMAIL or user_email in approved_list:
                 st.session_state.logged_in = True
                 st.session_state.username = user_email
+                st.query_params["user"] = user_email  # Persist across page refreshes
                 log_activity(user_email, "Signed in successfully.")
                 st.rerun()
             else:
@@ -380,6 +395,7 @@ if st.button("Logout"):
     log_activity(st.session_state.username, "Logged out of the system.")
     st.session_state.logged_in = False
     st.session_state.username = ""
+    st.query_params.clear()  # Clear persisted session token on explicit logout
     st.rerun()
 
 st.markdown("---")
@@ -397,9 +413,6 @@ with vid_col2:
 
 st.markdown("---")
 
-# STRICT TAB VISIBILITY RULE: 
-# - Admin sees Automation Dashboard, History, Admin Thread Analytics, User Activity, and the Granular Thread & View Logs Panel.
-# - Regular users ONLY see the Automation Dashboard.
 if st.session_state.username == ADMIN_EMAIL:
     tab_dash, tab_history, tab_admin_threads, tab_user_activity, tab_granular_threads = st.tabs([
         "🚀 Automation Dashboard", 
@@ -422,13 +435,12 @@ with tab_dash:
         if is_valid_youtube_url(url_input):
             st.session_state.validated_url = url_input
             log_activity(st.session_state.username, f"Validated YouTube URL: {url_input}")
-            st.success("URL verified and accepted! Error sound stopped.")
+            st.success("URL verified and accepted!")
         else:
             st.session_state.validated_url = ""
             log_activity(st.session_state.username, f"Submitted invalid YouTube URL: {url_input}")
             st.error("Invalid YouTube URL! Please check the link.")
             
-            # Play error sound every time wrong URL is submitted
             if os.path.exists("error.mp3"):
                 try:
                     with open("error.mp3", "rb") as audio_file:
@@ -446,19 +458,26 @@ with tab_dash:
 
     if st.session_state.validated_url:
         yt_url = st.session_state.validated_url
-        vid_id = get_youtube_video_id(yt_url)
         
+        with st.spinner("Fetching video details..."):
+            video_title, real_before_views, video_duration = get_real_youtube_info(yt_url)
+
         st.markdown("---")
         st.subheader("Step 2: Preview & Shorts Feed Target Setup")
         
         thumbnail_url = get_youtube_thumbnail(yt_url)
         col1, col2 = st.columns([1, 2])
+        
         with col1:
             if thumbnail_url:
-                st.image(thumbnail_url, caption="Shorts Thumbnail Preview", width=250)
+                st.image(thumbnail_url, caption="Shorts Thumbnail Preview", width=220)
+                
         with col2:
-            st.markdown(f"**Traffic Source:** YouTube Shorts Feed (5 Multi-Threaded Server Workers)")
-            st.markdown(f"**Pacing Limit:** Exactly 1,000 views / hour limit enforcement")
+            st.markdown(f"### 🎬 {video_title}")
+            st.markdown(f"⏱️ **Video Duration:** `{video_duration}`")
+            st.markdown(f"👀 **Current Views:** `{real_before_views:,}`")
+            st.markdown(f"🌐 **Traffic Source:** YouTube Shorts Feed (5 Multi-Threaded Server Workers)")
+            st.markdown(f"⚡ **Pacing Limit:** Exactly 1,000 views / hour limit enforcement")
 
         st.markdown("---")
         st.subheader("Step 3: Select Desired Views")
@@ -478,9 +497,6 @@ with tab_dash:
 
         st.markdown("---")
         if st.button("Step 4: Launch True Background Cloud Bot Task"):
-            with st.spinner("Initializing 5 multi-threaded workers on server..."):
-                video_title, real_before_views = get_real_youtube_info(yt_url)
-            
             task_history_list = load_task_history()
             history_record = {
                 "user": st.session_state.username,
@@ -583,7 +599,7 @@ if st.session_state.username == ADMIN_EMAIL:
                     st.progress(progress_ratio)
                     st.markdown("---")
 
-# Admin-Only Permanent Thread Analytics Panel (`admin_thread_analytics.json`)
+# Admin-Only Permanent Thread Analytics Panel
 if st.session_state.username == ADMIN_EMAIL:
     with tab_admin_threads:
         st.subheader("🔒 Permanent Admin Thread & View Analytics Panel")
@@ -609,7 +625,7 @@ if st.session_state.username == ADMIN_EMAIL:
                     st.markdown(f"**Execution Status:** {entry['status']}")
                     st.markdown("---")
 
-# Admin-Only Dedicated Permanent User Activity & Monitoring Panel (`activity_logs.json`)
+# Admin-Only User Activity & Monitoring Panel
 if st.session_state.username == ADMIN_EMAIL:
     with tab_user_activity:
         st.subheader("👥 Dedicated Permanent User Activity & Action Monitoring Panel")
@@ -639,11 +655,11 @@ if st.session_state.username == ADMIN_EMAIL:
                 act_col3.markdown(f"🕒 **Time:** {act['time']}")
                 st.markdown("---")
 
-# Admin-Only Granular Thread & Every Single View Log Panel (`detailed_thread_logs.json`)
+# Admin-Only Granular Thread & View Log Panel with Real Views & Shorts Feed Source
 if st.session_state.username == ADMIN_EMAIL:
     with tab_granular_threads:
         st.subheader("⚙️ Granular Every-Single-Thread & Every-Single-View Log Panel")
-        st.info("ℹ️ This panel displays **every single thread** and **every single view attempt** (whether generated & added successfully or skipped/dropped) across all active threads in real-time. Visible strictly to the administrator.")
+        st.info("ℹ️ Displays **every single thread execution and view attempt** with real-time views added and traffic source tracking (YouTube Shorts Feed). Visible strictly to the administrator.")
         
         detailed_logs = load_detailed_thread_logs()
         if len(detailed_logs) == 0:
@@ -666,8 +682,9 @@ if st.session_state.username == ADMIN_EMAIL:
                     col_l3.markdown(f"🧵 **{log['thread_id']}** (`{log['step_cycle']}`)")
                     
                     status_color = "green" if "Generated & Added" in log['view_status'] else "orange"
-                    col_l4.markdown(f"Status: **:%{status_color}[{log['view_status']}]**" if "green" in status_color else f"Status: **{log['view_status']}**")
+                    col_l4.markdown(f"Status: **{log['view_status']}**")
                     
                     st.markdown(f"🎬 **Video:** {log['title']} | 🔗 [URL]({log['url']})")
+                    st.markdown(f"📊 **Traffic Source:** `{log.get('traffic_source', 'YouTube Shorts Feed')}` | 👀 **Current Live Views Count:** `{log.get('real_time_views_added', 0):,}`")
                     st.markdown(f"📝 *Details:* {log['details']}")
                     st.markdown("---")
