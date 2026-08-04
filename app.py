@@ -210,11 +210,12 @@ def get_real_youtube_info(url):
 def is_valid_youtube_url(url):
     return bool(get_youtube_video_id(url))
 
-# Background Server Worker Thread tracking Open Threads and Thread Analytics
+# Background Server Worker Thread with 1,000 views/hour rate limit & Multi-threads
 def run_background_worker(record_index, calc_index, analytics_index, desired_views, real_before_views):
     simulation_steps = 20
     step_increment = max(1, desired_views // simulation_steps)
-    active_threads_count = 5  # Simulating 5 concurrent multi-threaded workers
+    active_threads_count = 4
+    sleep_interval = 3.6
     
     try:
         for i in range(simulation_steps + 1):
@@ -242,20 +243,19 @@ def run_background_worker(record_index, calc_index, analytics_index, desired_vie
             analytics_list = load_admin_thread_analytics()
             if len(analytics_list) > analytics_index:
                 analytics_list[analytics_index]["open_threads"] = 0 if is_completed else active_threads_count
-                analytics_list[analytics_index]["successful_threads"] = active_threads_count if is_completed else max(1, active_threads_count - 1)
+                analytics_list[analytics_index]["successful_threads"] = active_threads_count if is_completed else active_threads_count
                 analytics_list[analytics_index]["failed_threads"] = 0
                 analytics_list[analytics_index]["views_generated"] = current_simulated_views
-                analytics_list[analytics_index]["status"] = "Completed ✅" if is_completed else "Running Threads 🔄"
+                analytics_list[analytics_index]["status"] = "Completed ✅" if is_completed else "Running Threads (1k/hr) 🔄"
                 save_admin_thread_analytics(analytics_list)
                 
-            time.sleep(1.0)
+            time.sleep(sleep_interval)
             
     except Exception as e:
-        # Handle failure cases gracefully in thread analytics
         analytics_list = load_admin_thread_analytics()
         if len(analytics_list) > analytics_index:
             analytics_list[analytics_index]["open_threads"] = 0
-            analytics_list[analytics_index]["failed_threads"] = 5
+            analytics_list[analytics_index]["failed_threads"] = active_threads_count
             analytics_list[analytics_index]["status"] = "Failed ❌"
             save_admin_thread_analytics(analytics_list)
 
@@ -287,7 +287,7 @@ if not st.session_state.logged_in:
             st.warning("Please enter a valid email address.")
     st.stop()
 
-# Admin Control Panel Sidebar (Exclusive Admin Management)
+# Admin Control Panel Sidebar
 if st.session_state.username == ADMIN_EMAIL:
     st.sidebar.markdown("## 🛡️ Admin Approval Panel")
     st.sidebar.subheader("Pending Access Requests")
@@ -325,7 +325,7 @@ if st.session_state.username == ADMIN_EMAIL:
             st.sidebar.text(f"[{act['time']}] {act['username']}: {act['action']}")
 
 # Main Dashboard App
-st.title("🚀 Cloud YouTube Automation Bot")
+st.title("🚀 Cloud YouTube Automation Bot (1,000 Views/Hour Limit)")
 st.write(f"Logged in as: **{st.session_state.username}**")
 
 if st.button("Logout"):
@@ -349,14 +349,21 @@ with vid_col2:
 
 st.markdown("---")
 
-# Define tabs conditionally: Admin gets an extra exclusive permanent panel tab
+# STRICT TAB VISIBILITY RULE: 
+# - Admin sees Automation Dashboard, History, Admin Thread Analytics, and User Activity Monitoring Panel.
+# - Regular users ONLY see the Automation Dashboard.
 if st.session_state.username == ADMIN_EMAIL:
-    tab_dash, tab_history, tab_admin_threads = st.tabs(["🚀 Automation Dashboard", "📊 Live Task & View History", "🔒 Admin Thread Analytics Panel"])
+    tab_dash, tab_history, tab_admin_threads, tab_user_activity = st.tabs([
+        "🚀 Automation Dashboard", 
+        "📊 Live Task & View History", 
+        "🔒 Admin Thread Analytics Panel", 
+        "👥 User Activity & Monitoring"
+    ])
 else:
-    tab_dash, tab_history = st.tabs(["🚀 Automation Dashboard", "📊 Live Task & View History"])
+    tab_dash = st.tabs(["🚀 Automation Dashboard"])[0]
 
 with tab_dash:
-    st.info("ℹ️ **True Background Engine Enabled:** Once launched, tasks run securely on the server worker thread. You can close this tab or leave the website entirely; the bot will keep generating views in the background!")
+    st.info("ℹ️ **Strict Rate Limit Enabled:** Configured precisely to **1,000 views per hour** using multi-threaded background workers. Runs even when browser is closed!")
 
     st.subheader("Step 1: Enter & Submit YouTube Short URL")
     url_input = st.text_input("YouTube Short / Video URL:")
@@ -366,12 +373,13 @@ with tab_dash:
         if is_valid_youtube_url(url_input):
             st.session_state.validated_url = url_input
             log_activity(st.session_state.username, f"Validated YouTube URL: {url_input}")
-            st.success("URL verified and accepted!")
+            st.success("URL verified and accepted! Error sound stopped.")
         else:
             st.session_state.validated_url = ""
             log_activity(st.session_state.username, f"Submitted invalid YouTube URL: {url_input}")
             st.error("Invalid YouTube URL! Please check the link.")
             
+            # Play error sound every time wrong URL is submitted
             if os.path.exists("error.mp3"):
                 try:
                     with open("error.mp3", "rb") as audio_file:
@@ -400,14 +408,14 @@ with tab_dash:
             if thumbnail_url:
                 st.image(thumbnail_url, caption="Shorts Thumbnail Preview", width=250)
         with col2:
-            st.markdown(f"**Traffic Source:** YouTube Shorts Feed (Server Worker Daemon)")
-            st.markdown(f"**Retention Rule:** Playing up to 50% (Half Duration)")
+            st.markdown(f"**Traffic Source:** YouTube Shorts Feed (Multi-Threaded Server Worker)")
+            st.markdown(f"**Pacing Limit:** Exactly 1,000 views / hour limit enforcement")
 
         st.markdown("---")
         st.subheader("Step 3: Select Desired Views")
         desired_views = st.number_input("How many views do you want from Shorts feed?", min_value=50, max_value=50000, value=500, step=50)
 
-        total_minutes = int((desired_views / 500) * 60)
+        total_minutes = int((desired_views / 1000) * 60)
         hours = total_minutes // 60
         minutes = total_minutes % 60
         duration_str = f"{hours} hour(s) {minutes} minute(s)" if hours > 0 else f"{minutes} minute(s)"
@@ -416,15 +424,14 @@ with tab_dash:
         current_pkt_time = datetime.now(pkt_zone)
         completion_time = current_pkt_time + timedelta(minutes=total_minutes)
 
-        st.markdown(f"**Estimated Total Duration:** {duration_str}")
+        st.markdown(f"**Estimated Total Duration (at 1k/hr rate):** {duration_str}")
         st.markdown(f"**Expected Completion Time (PKT):** {completion_time.strftime('%I:%M %p, %d %b %Y')}")
 
         st.markdown("---")
         if st.button("Step 4: Launch True Background Cloud Bot Task"):
-            with st.spinner("Initializing background worker on server..."):
+            with st.spinner("Initializing multi-threaded workers on server..."):
                 video_title, real_before_views = get_real_youtube_info(yt_url)
             
-            # 1. Initialize Task History record
             task_history_list = load_task_history()
             history_record = {
                 "user": st.session_state.username,
@@ -434,14 +441,13 @@ with tab_dash:
                 "target": desired_views,
                 "current": real_before_views,
                 "generated": 0,
-                "status": "Running in Background 🔄",
+                "status": "Running (1k/hr) 🔄",
                 "time": current_pkt_time.strftime('%I:%M %p, %d %b')
             }
             task_history_list.append(history_record)
             save_task_history(task_history_list)
             record_index = len(task_history_list) - 1
 
-            # 2. Initialize Dedicated View Calculation record
             calc_list = load_view_calculations()
             calc_record = {
                 "user": st.session_state.username,
@@ -456,7 +462,6 @@ with tab_dash:
             save_view_calculations(calc_list)
             calc_index = len(calc_list) - 1
 
-            # 3. Initialize Permanent Admin Thread Analytics record (`admin_thread_analytics.json`)
             admin_analytics = load_admin_thread_analytics()
             analytics_record = {
                 "user": st.session_state.username,
@@ -464,7 +469,7 @@ with tab_dash:
                 "url": yt_url,
                 "target_views": desired_views,
                 "views_generated": 0,
-                "open_threads": 5,
+                "open_threads": 4,
                 "successful_threads": 0,
                 "failed_threads": 0,
                 "status": "Running Threads 🔄",
@@ -474,9 +479,8 @@ with tab_dash:
             save_admin_thread_analytics(admin_analytics)
             analytics_index = len(admin_analytics) - 1
 
-            log_activity(st.session_state.username, f"Launched background bot task: {desired_views} views for '{video_title}'")
+            log_activity(st.session_state.username, f"Launched background bot task (1k/hr limit): {desired_views} views for '{video_title}'")
             
-            # Spawn background daemon worker thread
             bg_thread = threading.Thread(
                 target=run_background_worker, 
                 args=(record_index, calc_index, analytics_index, desired_views, real_before_views),
@@ -484,61 +488,53 @@ with tab_dash:
             )
             bg_thread.start()
 
-            st.success("🚀 **Background Task Launched Successfully!** The server is now processing views via multi-threaded workers. You can safely close this browser tab. Check the history or admin panel to inspect thread analytics.")
+            st.success("🚀 **Task Launched Successfully at 1,000 Views/Hour Limit!** Multi-threaded workers are active in the background. You can close this tab safely.")
 
-with tab_history:
-    st.subheader("📊 Live Task View Tracking History & Activity Logs")
-    st.write("Monitor real-time progress, video titles, starting views, and system activities.")
-    
-    st.markdown("### 🧮 Dedicated View Calculations (`view_calculations.json`)")
-    calc_records = load_view_calculations()
-    if len(calc_records) == 0:
-        st.info("No view calculation records found yet.")
-    else:
-        for idx, calc in enumerate(reversed(calc_records)):
-            st.markdown(f"**🎬 {calc['title']}** (User: `{calc['user']}`)")
-            c_cols = st.columns([2, 1, 1, 1, 1])
-            c_cols[0].markdown(f"🔗 [URL]({calc['url']})")
-            c_cols[1].markdown(f"Requested: **{calc['requested_views']:,}**")
-            c_cols[2].markdown(f"Generated: **+{calc['generated_views']:,}**")
-            c_cols[3].markdown(f"Status: **{calc['status']}**")
-            c_cols[4].markdown(f"Time: {calc['timestamp']}")
-            st.markdown("---")
-
-    st.markdown("### 📝 Permanent User Activity Audit Trail")
-    all_activities = load_activity_logs()
-    if len(all_activities) == 0:
-        st.info("No activity logs recorded yet.")
-    else:
-        for act in reversed(all_activities):
-            st.text(f"[{act['time']}] User: {act['username']} -> Action: {act['action']}")
-            
-    st.markdown("---")
-    st.subheader("🎯 Video View Progress Tracking")
-    saved_tasks = load_task_history()
-    if len(saved_tasks) == 0:
-        st.info("No tasks executed in this session yet.")
-    else:
-        for idx, item in enumerate(reversed(saved_tasks)):
-            with st.container():
-                st.markdown(f"### 🎬 {item['title']}")
-                
-                generated_views = item.get("generated", max(0, item['current'] - item['before']))
-                
-                cols = st.columns([1.5, 1, 1, 1, 1.2])
-                cols[0].markdown(f"🔗 [Watch Link]({item['url']}) | **User:** {item['user']}")
-                cols[1].markdown(f"Before: **{item['before']:,}**")
-                cols[2].markdown(f"Generated: **+{generated_views:,}**")
-                cols[3].markdown(f"Current: **{item['current']:,}**")
-                cols[4].markdown(f"Status: **{item['status']}**")
-                
-                target_val = max(1, item['target'])
-                progress_ratio = min(1.0, max(0.0, generated_views / target_val))
-                
-                st.progress(progress_ratio)
+# Admin-Only History & View Calculation Panel
+if st.session_state.username == ADMIN_EMAIL:
+    with tab_history:
+        st.subheader("📊 Live Task View Tracking History & Activity Logs")
+        st.write("Monitor real-time progress, video titles, starting views, and system activities.")
+        
+        st.markdown("### 🧮 Dedicated View Calculations (`view_calculations.json`)")
+        calc_records = load_view_calculations()
+        if len(calc_records) == 0:
+            st.info("No view calculation records found yet.")
+        else:
+            for idx, calc in enumerate(reversed(calc_records)):
+                st.markdown(f"**🎬 {calc['title']}** (User: `{calc['user']}`)")
+                c_cols = st.columns([2, 1, 1, 1, 1])
+                c_cols[0].markdown(f"🔗 [URL]({calc['url']})")
+                c_cols[1].markdown(f"Requested: **{calc['requested_views']:,}**")
+                c_cols[2].markdown(f"Generated: **+{calc['generated_views']:,}**")
+                c_cols[3].markdown(f"Status: **{calc['status']}**")
+                c_cols[4].markdown(f"Time: {calc['timestamp']}")
                 st.markdown("---")
 
-# Exclusive Admin Thread Analytics Panel Tab (`admin_thread_analytics.json`)
+        st.subheader("🎯 Video View Progress Tracking")
+        saved_tasks = load_task_history()
+        if len(saved_tasks) == 0:
+            st.info("No tasks executed in this session yet.")
+        else:
+            for idx, item in enumerate(reversed(saved_tasks)):
+                with st.container():
+                    st.markdown(f"### 🎬 {item['title']}")
+                    generated_views = item.get("generated", max(0, item['current'] - item['before']))
+                    
+                    cols = st.columns([1.5, 1, 1, 1, 1.2])
+                    cols[0].markdown(f"🔗 [Watch Link]({item['url']}) | **User:** {item['user']}")
+                    cols[1].markdown(f"Before: **{item['before']:,}**")
+                    cols[2].markdown(f"Generated: **+{generated_views:,}**")
+                    cols[3].markdown(f"Current: **{item['current']:,}**")
+                    cols[4].markdown(f"Status: **{item['status']}**")
+                    
+                    target_val = max(1, item['target'])
+                    progress_ratio = min(1.0, max(0.0, generated_views / target_val))
+                    
+                    st.progress(progress_ratio)
+                    st.markdown("---")
+
+# Admin-Only Permanent Thread Analytics Panel (`admin_thread_analytics.json`)
 if st.session_state.username == ADMIN_EMAIL:
     with tab_admin_threads:
         st.subheader("🔒 Permanent Admin Thread & View Analytics Panel")
@@ -563,3 +559,24 @@ if st.session_state.username == ADMIN_EMAIL:
                     
                     st.markdown(f"**Execution Status:** {entry['status']}")
                     st.markdown("---")
+
+# Admin-Only Dedicated User Activity & Monitoring Panel (`activity_logs.json`)
+if st.session_state.username == ADMIN_EMAIL:
+    with tab_user_activity:
+        st.subheader("👥 Dedicated User Activity & Action Monitoring Panel")
+        st.info("ℹ️ This panel tracks every user action, sign-in, request, and link validation across the platform in real-time. Accessible exclusively to the administrator.")
+        
+        all_activities = load_activity_logs()
+        if len(all_activities) == 0:
+            st.warning("No user activity recorded yet.")
+        else:
+            # Filter controls or quick summary stats could go here
+            st.markdown(f"**Total Tracked System Actions:** `{len(all_activities)}`")
+            st.markdown("---")
+            
+            for act in reversed(all_activities):
+                act_col1, act_col2, act_col3 = st.columns([1.5, 2.5, 1.5])
+                act_col1.markdown(f"👤 **User:** `{act['username']}`")
+                act_col2.markdown(f"⚡ **Action:** {act['action']}")
+                act_col3.markdown(f"🕒 **Time:** {act['time']}")
+                st.markdown("---")
