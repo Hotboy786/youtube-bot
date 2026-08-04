@@ -6,7 +6,7 @@ import os
 import urllib.request
 import json as jlib
 import threading
-import subprocess
+import random
 from datetime import datetime, timedelta, timezone
 
 st.set_page_config(page_title="Cloud YouTube Automation Bot", page_icon="🚀", layout="wide")
@@ -237,7 +237,6 @@ def parse_iso8601_duration(duration_str):
     return total if total > 0 else 35
 
 def fetch_real_youtube_metadata_via_api(url):
-    """Fetches exact title, official view count, and precise duration using the official YouTube Data API v3."""
     vid_id = get_youtube_video_id(url)
     if not vid_id:
         return "YouTube Shorts Video", 1250, "0:35", 35
@@ -279,29 +278,65 @@ def run_real_youtube_automation(target_url, desired_views, record_index, calc_in
     active_threads_count = 3  
     views_completed = 0
 
+    # Diverse mobile user agents and resolutions for human fingerprint mimicking
+    MOBILE_USER_AGENTS = [
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/119.0.6045.109 Mobile/15E148 Safari/604.1",
+        "Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.43 Mobile Safari/537.36",
+        "Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.6045.163 Mobile Safari/537.36"
+    ]
+    
+    VIEWPORTS = [
+        {"width": 412, "height": 915},
+        {"width": 393, "height": 851},
+        {"width": 428, "height": 926},
+        {"width": 360, "height": 800}
+    ]
+
     try:
         from playwright.sync_api import sync_playwright
         
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
+            # Headless=True with stealth args or headless=False for local debugging
+            browser = p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-blink-features=AutomationControlled"])
             
             while views_completed < desired_views:
                 batch_size = min(active_threads_count, desired_views - views_completed)
                 
                 for i in range(batch_size):
                     try:
+                        chosen_ua = random.choice(MOBILE_USER_AGENTS)
+                        chosen_viewport = random.choice(VIEWPORTS)
+                        
                         context = browser.new_context(
-                            user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
-                            viewport={"width": 412, "height": 915},
-                            device_scale_factor=2.6,
+                            user_agent=chosen_ua,
+                            viewport=chosen_viewport,
+                            device_scale_factor=random.choice([2.5, 2.75, 3.0]),
                             is_mobile=True,
-                            has_touch=True
+                            has_touch=True,
+                            locale="en-US"
                         )
                         page = context.new_page()
+                        
+                        # Strip webdriver flags to prevent bot fingerprinting
+                        page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined});")
+                        
                         page.goto(target_url, timeout=30000)
                         page.wait_for_selector("video", timeout=10000)
                         
-                        time.sleep(max(1.0, play_duration_secs))
+                        # Simulate human jitter: random mouse/touch move
+                        try:
+                            page.mouse.move(random.randint(50, 300), random.randint(100, 500))
+                            time.sleep(random.uniform(0.3, 0.9))
+                            # Simulate gentle swipe/scroll behavior common on shorts
+                            page.mouse.wheel(0, random.randint(20, 80))
+                        except Exception:
+                            pass
+                        
+                        # Add randomized watch variation to prevent exact clustering drops
+                        jittered_duration = max(1.0, play_duration_secs + random.uniform(-2.0, 2.5))
+                        time.sleep(jittered_duration)
+                        
                         context.close()
                         
                         views_completed += 1
@@ -314,10 +349,10 @@ def run_real_youtube_automation(target_url, desired_views, record_index, calc_in
                             "url": target_url,
                             "thread_id": f"Worker #{i+1}",
                             "step_cycle": f"View {views_completed}/{desired_views}",
-                            "view_status": "Generated & Added ✅",
-                            "traffic_source": "YouTube Shorts Feed (Automated Browser)",
+                            "view_status": "Generated & Filter-Protected ✅",
+                            "traffic_source": "YouTube Shorts Feed (Human-Mimic Browser)",
                             "real_time_views_added": views_completed,
-                            "details": f"Played for {play_duration_secs:.1f}s (Half length - 1s). View count incremented."
+                            "details": f"Simulated human session for {jittered_duration:.1f}s with randomized UA/Viewport. View recorded."
                         }
                         detailed_logs.append(thread_log_entry)
                         save_detailed_thread_logs(detailed_logs)
@@ -346,7 +381,7 @@ def run_real_youtube_automation(target_url, desired_views, record_index, calc_in
                         analytics_list[analytics_index]["status"] = "Completed ✅" if views_completed >= desired_views else "Running Workers 🔄"
                         save_admin_thread_analytics(analytics_list)
 
-                time.sleep(3)
+                time.sleep(random.uniform(2.5, 5.0))
             
             browser.close()
 
@@ -424,7 +459,7 @@ if st.session_state.username == ADMIN_EMAIL:
             st.sidebar.text(f"[{act['time']}] {act['username']}: {act['action']}")
 
 # Main App Layout
-st.title("🚀 Cloud YouTube Automation Bot (Admin: Unlimited | Users: 500 Views/Day)")
+st.title("🚀 Cloud YouTube Automation Bot (Anti-Drop Human Mimicry)")
 st.write(f"Logged in as: **{st.session_state.username}**")
 
 if st.button("Logout"):
@@ -481,7 +516,7 @@ with tab_dash:
         play_duration = max(1.0, half_duration - 1.0)
 
         st.markdown("---")
-        st.subheader("Step 2: Preview & Watch Duration Settings")
+        st.subheader("Step 2: Preview & Anti-Drop Session Settings")
         
         thumbnail_url = get_youtube_thumbnail(yt_url)
         col1, col2 = st.columns([1, 2])
@@ -493,9 +528,9 @@ with tab_dash:
         with col2:
             st.markdown(f"### 🎬 {video_title}")
             st.markdown(f"⏱️ **Original Video Length:** `{video_duration}` (`{total_secs} seconds`)")
-            st.markdown(f"⏱️ **Calculated Watch Duration per View:** Half length (`{half_duration:.1f}s`) minus 1s $\rightarrow$ **`{play_duration:.1f} seconds`**")
+            st.markdown(f"⏱️ **Target Watch Duration:** Randomized human session profile (~`{play_duration:.1f}s`)")
             st.markdown(f"👀 **Current Views:** `{real_before_views:,}`")
-            st.markdown(f"🌐 **Traffic Source:** YouTube Shorts Feed (YouTube Data API v3)")
+            st.markdown(f"🌐 **Traffic Source:** YouTube Shorts Feed (Anti-Drop Fingerprint Randomizer)")
 
         st.markdown("---")
         st.subheader("Step 3: Select Desired Views")
@@ -504,11 +539,11 @@ with tab_dash:
             current_used = get_user_daily_stats(st.session_state.username)
             max_allowed = max(0, 500 - current_used)
             if max_allowed == 0:
-                desired_views = st.number_input("How many views do you want from Shorts feed?", min_value=0, max_value=0, value=0, step=50)
+                desired_views = st.number_input("How many views do you want?", min_value=0, max_value=0, value=0, step=50)
             else:
-                desired_views = st.number_input("How many views do you want from Shorts feed?", min_value=50, max_value=max_allowed, value=min(500, max_allowed), step=50)
+                desired_views = st.number_input("How many views do you want?", min_value=50, max_value=max_allowed, value=min(500, max_allowed), step=50)
         else:
-            desired_views = st.number_input("How many views do you want from Shorts feed?", min_value=50, max_value=50000, value=500, step=50)
+            desired_views = st.number_input("How many views do you want?", min_value=50, max_value=50000, value=500, step=50)
 
         total_minutes = int((desired_views / 1000) * 60)
         hours = total_minutes // 60
@@ -535,10 +570,10 @@ with tab_dash:
                 hours_left = int(time_to_reset.total_seconds() // 3600)
                 minutes_left = int((time_to_reset.total_seconds() % 3600) // 60)
                 
-                st.error(f"⏳ **Daily Quota Reached:** You have already used your 500 views limit for today. Your quota will update/reset in **{hours_left} hour(s) and {minutes_left} minute(s)** (at 12:00 AM PKT). Please come back tomorrow!")
+                st.error(f"⏳ **Daily Quota Reached:** Limit of 500 views reached. Resets in **{hours_left}h {minutes_left}m**.")
 
         if can_launch:
-            if st.button("Step 4: Launch True Background Cloud Bot Task"):
+            if st.button("Step 4: Launch Human-Mimic Cloud Bot Task"):
                 if not is_admin:
                     add_user_daily_usage(st.session_state.username, desired_views)
 
@@ -551,7 +586,7 @@ with tab_dash:
                     "target": desired_views,
                     "current": real_before_views,
                     "generated": 0,
-                    "status": "Running (1k/hr) 🔄",
+                    "status": "Running (Human-Mimic) 🔄",
                     "time": current_pkt_time.strftime('%I:%M %p, %d %b')
                 }
                 task_history_list.append(history_record)
@@ -582,14 +617,14 @@ with tab_dash:
                     "open_threads": 3,
                     "successful_threads": 0,
                     "failed_threads": 0,
-                    "status": "Running Browser Workers 🔄",
+                    "status": "Running Human-Mimic Workers 🔄",
                     "timestamp": current_pkt_time.strftime('%I:%M %p, %d %b %Y')
                 }
                 admin_analytics.append(analytics_record)
                 save_admin_thread_analytics(admin_analytics)
                 analytics_index = len(admin_analytics) - 1
 
-                log_activity(st.session_state.username, f"Launched real browser automation task: {desired_views} views for '{video_title}' (Play time: {play_duration:.1f}s)")
+                log_activity(st.session_state.username, f"Launched human-mimic task: {desired_views} views for '{video_title}'")
                 
                 bg_thread = threading.Thread(
                     target=run_real_youtube_automation, 
@@ -598,7 +633,7 @@ with tab_dash:
                 )
                 bg_thread.start()
 
-                st.success("🚀 **Task Launched Successfully!** Background browser workers will play each view for the calculated duration.")
+                st.success("🚀 **Task Launched with Anti-Drop Human Mimicry!** Browsers are now rotating user agents, viewports, and injecting human mouse/scroll behavior.")
 
 # Admin Tabs for Analytics and Monitoring
 if st.session_state.username == ADMIN_EMAIL:
