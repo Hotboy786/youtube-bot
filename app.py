@@ -8,7 +8,7 @@ import urllib.request
 import json as jlib
 from datetime import datetime, timedelta, timezone
 
-st.set_page_config(page_title="Cloud YouTube Automation Bot", page_icon="🚀", layout="wide")
+st.set_page_config(page_title=" YouTube Automation Bot", page_icon="🚀", layout="wide")
 
 REQUESTS_FILE = "pending_requests.json"
 USERS_FILE = "users.json"
@@ -272,7 +272,7 @@ if st.session_state.username == "admin":
             st.sidebar.text(f"[{act['time']}] {act['username']}: {act['action']}")
 
 # Main Dashboard App
-st.title("🚀 Cloud YouTube Automation Bot")
+st.title(" YouTube Automation Bot")
 st.write(f"Logged in as: **{st.session_state.username}**")
 
 if st.button("Logout"):
