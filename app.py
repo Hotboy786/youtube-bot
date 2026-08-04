@@ -12,6 +12,37 @@ from datetime import datetime, timedelta, timezone
 st.set_page_config(page_title="Cloud YouTube Automation Bot", page_icon="🚀", layout="wide")
 
 # ==========================================
+# BACKGROUND MUSIC COMPONENT
+# ==========================================
+MUSIC_FILE = "background_music.mp3"
+
+if os.path.exists(MUSIC_FILE):
+    try:
+        with open(MUSIC_FILE, "rb") as audio_file:
+            audio_bytes = audio_file.read()
+            audio_base64 = base64.b64encode(audio_bytes).decode()
+            
+            # HTML5 Audio tag with autoplay, loop, and low volume
+            bg_music_html = f"""
+                <audio autoplay loop id="bg-audio" style="display:none;">
+                    <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
+                </audio>
+                <script>
+                    var audio = document.getElementById("bg-audio");
+                    audio.volume = 0.3; // Set volume to 30% so it's not too loud
+                    var playPromise = audio.play();
+                    if (playPromise !== undefined) {{
+                        playPromise.catch(error => {{
+                            console.log("Autoplay blocked by browser policy. Interaction needed.");
+                        }});
+                    }}
+                </script>
+            """
+            st.components.v1.html(bg_music_html, height=0)
+    except Exception:
+        pass
+
+# ==========================================
 # CUSTOM SMALL PNG AT THE BEGINNING OF THE WEB
 # ==========================================
 if os.path.exists("logo.png"):
@@ -190,7 +221,6 @@ def get_user_daily_stats(username):
     
     limits_data = load_daily_limits()
     if username not in limits_data or limits_data[username].get("date") != today_str:
-        # Reset or initialize for today
         limits_data[username] = {
             "date": today_str,
             "views_used": 0
@@ -552,7 +582,6 @@ with tab_dash:
         st.markdown("---")
         st.subheader("Step 3: Select Desired Views")
         
-        # Enforce max value limit selector for regular users based on remaining quota
         if not is_admin:
             current_used = get_user_daily_stats(st.session_state.username)
             max_allowed = max(0, 500 - current_used)
@@ -577,14 +606,12 @@ with tab_dash:
 
         st.markdown("---")
         
-        # Check daily quota before allowing task launch for non-admin users
         can_launch = True
         if not is_admin:
             current_used_check = get_user_daily_stats(st.session_state.username)
             if current_used_check >= 500 or desired_views <= 0:
                 can_launch = False
                 
-                # Calculate time until midnight PKT reset
                 tomorrow_pkt = (current_pkt_time + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
                 time_to_reset = tomorrow_pkt - current_pkt_time
                 hours_left = int(time_to_reset.total_seconds() // 3600)
