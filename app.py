@@ -10,9 +10,49 @@ from datetime import datetime, timedelta, timezone
 
 st.set_page_config(page_title="Cloud YouTube Automation Bot", page_icon="🚀", layout="wide")
 
+# Admin configuration email set to your address
+ADMIN_EMAIL = "kingtechnical421@gmail.com"
+
+REQUESTS_FILE = "pending_requests.json"
+USERS_FILE = "approved_users.json"
 ACTIVITY_FILE = "activity_logs.json"
 TASKS_FILE = "task_history.json"
 VIEW_CALC_FILE = "view_calculations.json"
+
+# Persistent Approved Users Helper Functions
+def load_approved_users():
+    default_users = [ADMIN_EMAIL]
+    if os.path.exists(USERS_FILE):
+        try:
+            with open(USERS_FILE, "r") as f:
+                return json.load(f)
+        except Exception:
+            return default_users
+    return default_users
+
+def save_approved_users(users_list):
+    try:
+        with open(USERS_FILE, "w") as f:
+            json.dump(users_list, f)
+    except Exception:
+        pass
+
+# Persistent Pending Requests Helper Functions
+def load_pending_requests():
+    if os.path.exists(REQUESTS_FILE):
+        try:
+            with open(REQUESTS_FILE, "r") as f:
+                return json.load(f)
+        except Exception:
+            return []
+    return []
+
+def save_pending_requests(requests_list):
+    try:
+        with open(REQUESTS_FILE, "w") as f:
+            json.dump(requests_list, f)
+    except Exception:
+        pass
 
 # Persistent Activity Logger Helper Functions
 def log_activity(username, action_details):
@@ -151,21 +191,72 @@ def get_real_youtube_info(url):
 def is_valid_youtube_url(url):
     return bool(get_youtube_video_id(url))
 
-# Simple Email Access Screen
+# Email Authentication & Access Approval Screen
 if not st.session_state.logged_in:
-    st.title("🔒 YouTube Bot Quick Access")
-    st.info("🤖 **Bot Assistant:** Enter your email address to enter the dashboard.")
+    st.title("🔒 Restricted YouTube Bot Access")
+    st.info("🤖 **Bot Assistant:** Enter your email address to sign in or request access.")
 
     user_email = st.text_input("Enter your Email Address:")
-    if st.button("Continue to Dashboard"):
+    
+    if st.button("Sign In"):
         if user_email and "@" in user_email:
-            st.session_state.logged_in = True
-            st.session_state.username = user_email
-            log_activity(user_email, "Signed in via email.")
-            st.rerun()
+            approved_list = load_approved_users()
+            pending_list = load_pending_requests()
+            
+            # If admin or already approved
+            if user_email == ADMIN_EMAIL or user_email in approved_list:
+                st.session_state.logged_in = True
+                st.session_state.username = user_email
+                log_activity(user_email, "Signed in successfully.")
+                st.rerun()
+            else:
+                # Check if already pending
+                if user_email not in pending_list:
+                    pending_list.append(user_email)
+                    save_pending_requests(pending_list)
+                    log_activity(user_email, "Requested access to the platform.")
+                
+                st.warning("⏳ **Access Pending:** Your request has been sent to the admin. Please wait for approval.")
         else:
             st.warning("Please enter a valid email address.")
     st.stop()
+
+# Admin Control Panel Sidebar (Only visible for admin email)
+if st.session_state.username == ADMIN_EMAIL:
+    st.sidebar.markdown("## 🛡️ Admin Approval Panel")
+    st.sidebar.subheader("Pending Access Requests")
+    
+    current_pending = load_pending_requests()
+    approved_users = load_approved_users()
+
+    if len(current_pending) == 0:
+        st.sidebar.info("No pending requests.")
+    else:
+        for idx, email_req in enumerate(current_pending):
+            st.sidebar.text(email_req)
+            col1, col2 = st.sidebar.columns(2)
+            if col1.button("Approve", key=f"app_{idx}"):
+                if email_req not in approved_users:
+                    approved_users.append(email_req)
+                    save_approved_users(approved_users)
+                current_pending.pop(idx)
+                save_pending_requests(current_pending)
+                log_activity(ADMIN_EMAIL, f"Approved access for: {email_req}")
+                st.rerun()
+            if col2.button("Reject", key=f"rej_{idx}"):
+                current_pending.pop(idx)
+                save_pending_requests(current_pending)
+                log_activity(ADMIN_EMAIL, f"Rejected access for: {email_req}")
+                st.rerun()
+                
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("📋 System Activity Logs")
+    all_activities = load_activity_logs()
+    if len(all_activities) == 0:
+        st.sidebar.write("No activity recorded yet.")
+    else:
+        for act in reversed(all_activities[-10:]):
+            st.sidebar.text(f"[{act['time']}] {act['username']}: {act['action']}")
 
 # Main Dashboard App
 st.title("🚀 Cloud YouTube Automation Bot")
