@@ -3,3 +3,5 @@ yt-dlp
 selenium
 pillow
 streamlit-google-auth
+streamlit
+playwright
