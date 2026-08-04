@@ -1,7 +1,4 @@
 streamlit
-yt-dlp
-selenium
+playwright
 pillow
 streamlit-google-auth
-streamlit
-playwright
