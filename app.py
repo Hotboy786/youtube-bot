@@ -292,7 +292,7 @@ with tab_dash:
     url_input = st.text_input("YouTube Short / Video URL:")
     submit_url_btn = st.button("Submit URL")
 
-  if submit_url_btn:
+    if submit_url_btn:
         if is_valid_youtube_url(url_input):
             st.session_state.validated_url = url_input
             log_activity(st.session_state.username, f"Validated YouTube URL: {url_input}")
@@ -307,7 +307,6 @@ with tab_dash:
                     with open("error.mp3", "rb") as audio_file:
                         audio_bytes = audio_file.read()
                         audio_base64 = base64.b64encode(audio_bytes).decode()
-                        # Setting loop = true so it keeps playing until a valid URL is entered
                         error_audio_html = f"""
                             <script>
                                 var audio = new Audio("data:audio/mp3;base64,{audio_base64}");
