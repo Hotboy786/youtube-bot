@@ -143,10 +143,16 @@ if submit_url_btn:
     else:
         st.session_state.validated_url = ""
         st.error("Invalid YouTube URL! Please check the link.")
-        try:
-            st.audio("error.mp3", autoplay=True)
-        except Exception:
-            pass
+       else:
+        st.session_state.validated_url = ""
+        st.error("Invalid YouTube URL! Please check the link.")
+        
+        audio_html = """
+            <audio autoplay>
+                <source src="error.mp3" type="audio/mp3">
+            </audio>
+        """
+        st.markdown(audio_html, unsafe_allow_html=True)
 
 # Proceed with steps if a valid URL has been submitted
 if st.session_state.validated_url:
