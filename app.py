@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 st.set_page_config(page_title="Cloud YouTube Automation Bot", page_icon="🚀", layout="wide")
 
-# Initialize session state data (No user limits, dynamic approval system)
+# Initialize session state data
 if "users" not in st.session_state:
     st.session_state.users = {
         "admin": "MadaraUchiha786@@!!$$"
@@ -30,17 +30,11 @@ def get_youtube_thumbnail(url):
         return f"https://img.youtube.com/vi/{vid_id}/hqdefault.jpg"
     return None
 
-# Authentication Screen with Custom Video and Approval Flow
+# Authentication Screen
 if not st.session_state.logged_in:
     st.title("🔒 Restricted YouTube Bot Access")
-    
-    # Play local welcome video with sound controls
-    try:
-        st.video("welcome.mp4")
-    except Exception:
-        st.info("🤖 **Bot Assistant:** Welcome! Please log in or request access below.")
+    st.info("🤖 **Bot Assistant:** Welcome! Please log in or request access below.")
 
-    st.markdown("---")
     tab1, tab2 = st.tabs(["Login", "Request Access"])
     
     with tab1:
@@ -51,7 +45,7 @@ if not st.session_state.logged_in:
                 st.session_state.logged_in = True
                 st.session_state.username = username
                 st.rerun()
-            elif username in st.session_state.pending_requests:
+            elif username in [r["username"] for r in st.session_state.pending_requests]:
                 st.warning("Your request is still pending admin approval.")
             else:
                 st.error("Invalid credentials or account not approved yet. Please request access.")
@@ -112,6 +106,17 @@ if st.button("Logout"):
 
 st.markdown("---")
 
+# Display custom welcome video in a much smaller, compact column width
+vid_col1, vid_col2, vid_col3 = st.columns([2, 1.5, 2])
+with vid_col2:
+    st.caption("📺 Welcome Guide")
+    try:
+        st.video("welcome.mp4", format="video/mp4")
+    except Exception:
+        st.warning("Welcome video file 'welcome.mp4' not found.")
+
+st.markdown("---")
+
 # Speed Notice (500 views in 1 hour)
 st.info("ℹ️ **Speed Limit Notice:** To comply with safety distribution rules, delivery runs at a rate of **500 views in 1 hour**.")
 
@@ -119,7 +124,7 @@ st.info("ℹ️ **Speed Limit Notice:** To comply with safety distribution rules
 yt_url = st.text_input("Step 1: Enter YouTube Short / Video URL:")
 desired_views = st.number_input("Step 2: How many views do you want?", min_value=50, max_value=50000, value=500, step=50)
 
-# Calculate duration dynamically (500 views = 60 mins -> 1 view = 0.12 mins)
+# Calculate duration dynamically (500 views = 60 mins)
 total_minutes = int((desired_views / 500) * 60)
 hours = total_minutes // 60
 minutes = total_minutes % 60
@@ -152,7 +157,6 @@ if st.button("Step 4: Start Task & Run Live Views"):
         submission_msg = f"[{st.session_state.username}] Target: {desired_views} views for {yt_url}"
         st.session_state.task_logs.append(submission_msg)
         
-        # Live increasing views simulation container
         progress_bar = st.progress(0)
         status_text = st.empty()
         live_views_display = st.empty()
