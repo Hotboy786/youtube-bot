@@ -3,7 +3,7 @@ import time
 import re
 from datetime import datetime, timedelta, timezone
 
-st.set_page_config(page_config_title="Cloud YouTube Automation Bot", page_icon="🚀", layout="wide")
+st.set_page_config(page_title="Cloud YouTube Automation Bot", page_icon="🚀", layout="wide")
 
 # Initialize session state data (No user limits, dynamic approval system)
 if "users" not in st.session_state:
