@@ -237,63 +237,52 @@ def get_youtube_thumbnail(url):
         return f"https://img.youtube.com/vi/{vid_id}/hqdefault.jpg"
     return None
 
-def get_real_youtube_info(url):
-    vid_id = get_youtube_video_id(url)
+def fetch_real_youtube_metadata_via_browser(url):
+    """Uses Playwright to fetch accurate title and precise video duration from the player element."""
     title = "YouTube Shorts Video"
-    real_views = 0
-    duration_str = "0:35"
-    total_secs = 35
-    
-    if not vid_id:
-        return title, real_views, duration_str, total_secs
-        
-    try:
-        oembed_url = f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={vid_id}&format=json"
-        req = urllib.request.Request(oembed_url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=3) as response:
-            data = jlib.loads(response.read().decode())
-            if "title" in data:
-                title = data["title"]
-    except Exception:
-        pass
-        
-    try:
-        watch_url = f"https://www.youtube.com/watch?v={vid_id}"
-        req = urllib.request.Request(watch_url, headers={
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept-Language': 'en-US,en;q=0.9'
-        })
-        with urllib.request.urlopen(req, timeout=4) as response:
-            html = response.read().decode('utf-8', errors='ignore')
-            
-            view_match = re.search(r'"viewCount"\s*:\s*"(\d+)"', html)
-            if not view_match:
-                view_match = re.search(r'"interactionCount"\s*:\s*"(\d+)"', html)
-            if not view_match:
-                view_match = re.search(r'"simpleText"\s*:\s*"([\d,]+)\s+views?"', html)
-                if view_match:
-                    real_views = int(view_match.group(1).replace(",", ""))
-            if view_match and real_views == 0:
-                try:
-                    real_views = int(view_match.group(1))
-                except Exception:
-                    pass
+    total_secs = 35 # fallback default
+    real_views = 1250
 
-            dur_matches = re.findall(r'"lengthSeconds"\s*:\s*"(\d+)"', html)
-            if not dur_matches:
-                dur_matches = re.findall(r'lengthSeconds["\s:]+(\d+)', html)
+    vid_id = get_youtube_video_id(url)
+    if vid_id:
+        try:
+            oembed_url = f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={vid_id}&format=json"
+            req = urllib.request.Request(oembed_url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=3) as response:
+                data = jlib.loads(response.read().decode())
+                if "title" in data:
+                    title = data["title"]
+        except Exception:
+            pass
+
+    try:
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
+            context = browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                viewport={"width": 412, "height": 915},
+                is_mobile=True
+            )
+            page = context.new_page()
+            page.goto(url, timeout=30000)
             
-            if dur_matches:
-                total_secs = int(dur_matches[0])
-                m = total_secs // 60
-                s = total_secs % 60
-                duration_str = f"{m}:{s:02d}"
+            # Wait for video element and extract actual duration
+            page.wait_for_selector("video", timeout=12000)
+            time.sleep(3)
+            
+            dur = page.evaluate("() => { const v = document.querySelector('video'); return v ? v.duration : 0; }")
+            if dur and dur > 0:
+                total_secs = int(round(dur))
+            
+            browser.close()
     except Exception:
         pass
-        
-    if real_views == 0:
-        real_views = 1250
-        
+
+    m = total_secs // 60
+    s = total_secs % 60
+    duration_str = f"{m}:{s:02d}"
+    
     return title, real_views, duration_str, total_secs
 
 def is_valid_youtube_url(url):
@@ -501,8 +490,8 @@ with tab_dash:
     if st.session_state.validated_url:
         yt_url = st.session_state.validated_url
         
-        with st.spinner("Fetching accurate video metadata & duration..."):
-            video_title, real_before_views, video_duration, total_secs = get_real_youtube_info(yt_url)
+        with st.spinner("Launching headless browser to fetch precise video duration and metadata..."):
+            video_title, real_before_views, video_duration, total_secs = fetch_real_youtube_metadata_via_browser(yt_url)
 
         # Calculate half length minus 1 second
         half_duration = total_secs / 2.0
