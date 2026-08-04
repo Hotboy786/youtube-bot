@@ -114,14 +114,20 @@ if st.button("Logout"):
 
 st.markdown("---")
 
-# Compact Welcome Guide Video playing automatically after login
+# Compact Welcome Guide Video (Autoplays securely muted) + Unmute Sound Button
 vid_col1, vid_col2, vid_col3 = st.columns([2, 1.5, 2])
 with vid_col2:
     st.caption("📺 Welcome Guide")
     try:
-        st.video("welcome.mp4", format="video/mp4", autoplay=True, muted=False)
+        st.video("welcome.mp4", format="video/mp4", autoplay=True, muted=True)
     except Exception:
         pass
+    
+    if st.button("🔊 Unmute / Play Welcome Sound"):
+        try:
+            st.audio("welcome.mp4", autoplay=True)
+        except Exception:
+            st.error("Audio playback file not found.")
 
 st.markdown("---")
 
