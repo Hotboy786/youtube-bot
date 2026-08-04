@@ -3,7 +3,6 @@ import time
 import re
 import json
 import os
-import base64
 import urllib.request
 import json as jlib
 import threading
@@ -22,14 +21,6 @@ except Exception:
         pass
 
 st.set_page_config(page_title="Cloud YouTube Automation Bot", page_icon="🚀", layout="wide")
-
-# ==========================================
-# CUSTOM LOGO / BRANDING
-# ==========================================
-if os.path.exists("logo.png"):
-    st.image("logo.png", width=150)
-else:
-    st.image("https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=300&auto=format&fit=crop", width=150)
 
 ADMIN_EMAIL = "kingtechnical421@gmail.com"
 
@@ -418,59 +409,6 @@ if not st.session_state.logged_in:
             st.warning("Please enter a valid email address.")
     st.stop()
 
-# Background Music Player
-MUSIC_FILE = "background_music.mp3"
-if os.path.exists(MUSIC_FILE):
-    try:
-        with open(MUSIC_FILE, "rb") as audio_file:
-            audio_bytes = audio_file.read()
-            audio_base64 = base64.b64encode(audio_bytes).decode()
-            
-            bg_music_html = f"""
-                <script>
-                    var doc = window.parent.document;
-                    var existingAudio = doc.getElementById("persistent-bg-audio");
-                    
-                    if (!existingAudio) {{
-                        var audioContainer = doc.createElement("div");
-                        audioContainer.innerHTML = `
-                            <audio id="persistent-bg-audio" loop>
-                                <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
-                            </audio>
-                        `;
-                        doc.body.appendChild(audioContainer);
-                        var audio = doc.getElementById("persistent-bg-audio");
-                        audio.volume = 0.3;
-                        audio.play().catch(error => {{
-                            console.log("Autoplay waiting for manual user interaction:", error);
-                        }});
-                    }}
-                </script>
-            """
-            st.components.v1.html(bg_music_html, height=0)
-            
-            st.sidebar.markdown("### 🎵 Background Music")
-            if st.sidebar.button("▶️ Play / Resume Music"):
-                play_script = """
-                    <script>
-                        var doc = window.parent.document;
-                        var audio = doc.getElementById("persistent-bg-audio");
-                        if(audio) { audio.play(); }
-                    </script>
-                """
-                st.components.v1.html(play_script, height=0)
-            if st.sidebar.button("⏸️ Pause Music"):
-                pause_script = """
-                    <script>
-                        var doc = window.parent.document;
-                        var audio = doc.getElementById("persistent-bg-audio");
-                        if(audio) { audio.pause(); }
-                    </script>
-                """
-                st.components.v1.html(pause_script, height=0)
-    except Exception:
-        pass
-
 # Admin Sidebar Panel
 if st.session_state.username == ADMIN_EMAIL:
     st.sidebar.markdown("---")
@@ -556,21 +494,6 @@ with tab_dash:
             st.session_state.validated_url = ""
             log_activity(st.session_state.username, f"Submitted invalid YouTube URL: {url_input}")
             st.error("Invalid YouTube URL! Please check the link.")
-            
-            if os.path.exists("error.mp3"):
-                try:
-                    with open("error.mp3", "rb") as audio_file:
-                        audio_bytes = audio_file.read()
-                        audio_base64 = base64.b64encode(audio_bytes).decode()
-                        error_audio_html = f"""
-                            <script>
-                                var audio = new Audio("data:audio/mp3;base64,{audio_base64}?" + new Date().getTime());
-                                audio.play().catch(function(error) {{ console.log("Audio play blocked:", error); }});
-                            </script>
-                        """
-                        st.components.v1.html(error_audio_html, height=0)
-                except Exception:
-                    pass
 
     if st.session_state.validated_url:
         yt_url = st.session_state.validated_url
