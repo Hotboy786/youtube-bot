@@ -11,6 +11,16 @@ from datetime import datetime, timedelta, timezone
 
 st.set_page_config(page_title="Cloud YouTube Automation Bot", page_icon="🚀", layout="wide")
 
+# ==========================================
+# CUSTOM PICTURE AT THE BEGINNING OF THE WEB
+# ==========================================
+# Replace "banner.png" with your actual image file name or a public image URL
+if os.path.exists("banner.png"):
+    st.image("banner.png", use_container_width=True)
+else:
+    # Fallback placeholder info if the image file isn't uploaded yet
+    st.image("https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=1200&auto=format&fit=crop", use_container_width=True)
+
 # Admin configuration email set to your address
 ADMIN_EMAIL = "kingtechnical421@gmail.com"
 
@@ -57,7 +67,7 @@ def save_pending_requests(requests_list):
     except Exception:
         pass
 
-# Permanent Persistent Activity Logger Helper Functions (Stores Forever for Admin)
+# Permanent Persistent Activity Logger Helper Functions (Stores Forever for Admin & Records Every Activity)
 def log_activity(username, action_details):
     logs = []
     if os.path.exists(ACTIVITY_FILE):
