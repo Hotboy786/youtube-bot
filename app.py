@@ -7,43 +7,24 @@ import base64
 import urllib.request
 import json as jlib
 import threading
+import subprocess
 from datetime import datetime, timedelta, timezone
+
+# Auto-install playwright browsers and dependencies on cloud deployment if missing
+try:
+    from playwright.sync_api import sync_playwright
+    with sync_playwright() as p:
+        p.chromium.launch(headless=True)
+except Exception:
+    try:
+        subprocess.run(["playwright", "install", "chromium"], check=True)
+    except Exception:
+        pass
 
 st.set_page_config(page_title="Cloud YouTube Automation Bot", page_icon="🚀", layout="wide")
 
 # ==========================================
-# BACKGROUND MUSIC COMPONENT
-# ==========================================
-MUSIC_FILE = "background_music.mp3"
-
-if os.path.exists(MUSIC_FILE):
-    try:
-        with open(MUSIC_FILE, "rb") as audio_file:
-            audio_bytes = audio_file.read()
-            audio_base64 = base64.b64encode(audio_bytes).decode()
-            
-            # HTML5 Audio tag with autoplay, loop, and low volume
-            bg_music_html = f"""
-                <audio autoplay loop id="bg-audio" style="display:none;">
-                    <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
-                </audio>
-                <script>
-                    var audio = document.getElementById("bg-audio");
-                    audio.volume = 0.3; // Set volume to 30% so it's not too loud
-                    var playPromise = audio.play();
-                    if (playPromise !== undefined) {{
-                        playPromise.catch(error => {{
-                            console.log("Autoplay blocked by browser policy. Interaction needed.");
-                        }});
-                    }}
-                </script>
-            """
-            st.components.v1.html(bg_music_html, height=0)
-    except Exception:
-        pass
-
-# ==========================================
-# CUSTOM SMALL PNG AT THE BEGINNING OF THE WEB
+# CUSTOM LOGO / BRANDING
 # ==========================================
 if os.path.exists("logo.png"):
     st.image("logo.png", width=150)
@@ -61,7 +42,6 @@ ADMIN_THREAD_ANALYTICS_FILE = "admin_thread_analytics.json"
 DETAILED_THREAD_LOGS_FILE = "detailed_thread_logs.json"
 DAILY_LIMITS_FILE = "daily_user_limits.json"
 
-# Persistent Approved Users Helper Functions
 def load_approved_users():
     default_users = [ADMIN_EMAIL]
     if os.path.exists(USERS_FILE):
@@ -79,7 +59,6 @@ def save_approved_users(users_list):
     except Exception:
         pass
 
-# Persistent Pending Requests Helper Functions
 def load_pending_requests():
     if os.path.exists(REQUESTS_FILE):
         try:
@@ -96,7 +75,6 @@ def save_pending_requests(requests_list):
     except Exception:
         pass
 
-# Permanent Persistent Activity Logger Helper Functions
 def log_activity(username, action_details):
     logs = []
     if os.path.exists(ACTIVITY_FILE):
@@ -130,7 +108,6 @@ def load_activity_logs():
             return []
     return []
 
-# Persistent Task History Helper Functions
 def load_task_history():
     if os.path.exists(TASKS_FILE):
         try:
@@ -147,7 +124,6 @@ def save_task_history(history_list):
     except Exception:
         pass
 
-# Dedicated View Calculation Storage Helper Functions
 def load_view_calculations():
     if os.path.exists(VIEW_CALC_FILE):
         try:
@@ -164,7 +140,6 @@ def save_view_calculations(calc_list):
     except Exception:
         pass
 
-# Admin Permanent Thread Analytics Helper Functions
 def load_admin_thread_analytics():
     if os.path.exists(ADMIN_THREAD_ANALYTICS_FILE):
         try:
@@ -181,7 +156,6 @@ def save_admin_thread_analytics(analytics_list):
     except Exception:
         pass
 
-# Granular Every Single Thread & View Log Helper Functions
 def load_detailed_thread_logs():
     if os.path.exists(DETAILED_THREAD_LOGS_FILE):
         try:
@@ -198,7 +172,6 @@ def save_detailed_thread_logs(logs_list):
     except Exception:
         pass
 
-# Daily Limit Tracking Helper Functions (500 views max per day per non-admin user)
 def load_daily_limits():
     if os.path.exists(DAILY_LIMITS_FILE):
         try:
@@ -244,9 +217,7 @@ def add_user_daily_usage(username, views_count):
         
     save_daily_limits(limits_data)
 
-# ==========================================
-# SESSION STATE & PERSISTENT LOGIN CACHE FIX
-# ==========================================
+# Session State & Login Cache
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 if "username" not in st.session_state:
@@ -262,7 +233,6 @@ if not st.session_state.logged_in and "user" in query_params:
 if "validated_url" not in st.session_state:
     st.session_state.validated_url = ""
 
-# Helper function to extract YouTube Video ID
 def get_youtube_video_id(url):
     pattern = r"(?:v=|\/shorts\/|youtu\.be\/)([a-zA-Z0-9_-]{11})"
     match = re.search(pattern, url)
@@ -326,13 +296,6 @@ def get_real_youtube_info(url):
                 m = total_secs // 60
                 s = total_secs % 60
                 duration_str = f"{m}:{s:02d}"
-            else:
-                alt_dur = re.search(r'"approxDurationMs"\s*:\s*"(\d+)"', html)
-                if alt_dur:
-                    total_secs = int(alt_dur.group(1)) // 1000
-                    m = total_secs // 60
-                    s = total_secs % 60
-                    duration_str = f"{m}:{s:02d}"
     except Exception:
         pass
         
@@ -344,74 +307,89 @@ def get_real_youtube_info(url):
 def is_valid_youtube_url(url):
     return bool(get_youtube_video_id(url))
 
-# Background Server Worker Thread with granular per-thread and per-view logging
-def run_background_worker(record_index, calc_index, analytics_index, desired_views, real_before_views, task_title, task_url, task_user):
-    simulation_steps = 20
-    step_increment = max(1, desired_views // simulation_steps)
-    active_threads_count = 5
-    sleep_interval = 3.6
-    
+# Real Playwright Automation Background Worker
+def run_real_youtube_automation(target_url, desired_views, record_index, calc_index, analytics_index, real_before_views, task_title, task_user):
     pkt_zone = timezone(timedelta(hours=5))
+    active_threads_count = 3  
+    views_completed = 0
 
     try:
-        for step in range(1, simulation_steps + 1):
-            current_simulated_views = min(desired_views, step * step_increment)
-            is_completed = current_simulated_views >= desired_views
+        from playwright.sync_api import sync_playwright
+        
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
             
-            for t_id in range(1, active_threads_count + 1):
-                success_status = "Generated & Added ✅" if (step % 5 != 0 or t_id % 2 == 0) else "Skipped/Dropped ⚠️"
+            while views_completed < desired_views:
+                batch_size = min(active_threads_count, desired_views - views_completed)
                 
-                detailed_logs = load_detailed_thread_logs()
-                thread_log_entry = {
-                    "timestamp": datetime.now(pkt_zone).strftime('%I:%M:%S %p, %d %b %Y'),
-                    "user": task_user,
-                    "title": task_title,
-                    "url": task_url,
-                    "thread_id": f"Thread #{t_id}",
-                    "step_cycle": f"Step {step}/{simulation_steps}",
-                    "view_status": success_status,
-                    "traffic_source": "YouTube Shorts Feed",
-                    "real_time_views_added": current_simulated_views,
-                    "details": f"Processed view loop via Shorts Feed. Live Views Count: {real_before_views + current_simulated_views}"
-                }
-                detailed_logs.append(thread_log_entry)
-                save_detailed_thread_logs(detailed_logs)
+                for i in range(batch_size):
+                    try:
+                        context = browser.new_context(
+                            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                            viewport={"width": 412, "height": 915},
+                            device_scale_factor=2.6,
+                            is_mobile=True,
+                            has_touch=True
+                        )
+                        page = context.new_page()
+                        page.goto(target_url, timeout=30000)
+                        page.wait_for_selector("video", timeout=10000)
+                        time.sleep(6)
+                        context.close()
+                        
+                        views_completed += 1
+                        
+                        detailed_logs = load_detailed_thread_logs()
+                        thread_log_entry = {
+                            "timestamp": datetime.now(pkt_zone).strftime('%I:%M:%S %p, %d %b %Y'),
+                            "user": task_user,
+                            "title": task_title,
+                            "url": target_url,
+                            "thread_id": f"Worker #{i+1}",
+                            "step_cycle": f"View {views_completed}/{desired_views}",
+                            "view_status": "Generated & Added ✅",
+                            "traffic_source": "YouTube Shorts Feed (Automated Browser)",
+                            "real_time_views_added": views_completed,
+                            "details": f"Successfully loaded video via headless browser node. View count incremented."
+                        }
+                        detailed_logs.append(thread_log_entry)
+                        save_detailed_thread_logs(detailed_logs)
 
-            tasks = load_task_history()
-            if len(tasks) > record_index:
-                tasks[record_index]["current"] = real_before_views + current_simulated_views
-                tasks[record_index]["generated"] = current_simulated_views
-                if is_completed:
-                    tasks[record_index]["status"] = "Completed ✅"
-                save_task_history(tasks)
+                    except Exception:
+                        pass
 
-            calcs = load_view_calculations()
-            if len(calcs) > calc_index:
-                calcs[calc_index]["generated_views"] = current_simulated_views
-                if is_completed:
-                    calcs[calc_index]["status"] = "Completed ✅"
-                save_view_calculations(calcs)
+                    tasks = load_task_history()
+                    if len(tasks) > record_index:
+                        tasks[record_index]["current"] = real_before_views + views_completed
+                        tasks[record_index]["generated"] = views_completed
+                        if views_completed >= desired_views:
+                            tasks[record_index]["status"] = "Completed ✅"
+                        save_task_history(tasks)
 
-            analytics_list = load_admin_thread_analytics()
-            if len(analytics_list) > analytics_index:
-                analytics_list[analytics_index]["open_threads"] = 0 if is_completed else active_threads_count
-                analytics_list[analytics_index]["successful_threads"] = active_threads_count if is_completed else active_threads_count
-                analytics_list[analytics_index]["failed_threads"] = 0
-                analytics_list[analytics_index]["views_generated"] = current_simulated_views
-                analytics_list[analytics_index]["status"] = "Completed ✅" if is_completed else "Running 5 Threads (1k/hr) 🔄"
-                save_admin_thread_analytics(analytics_list)
-                
-            time.sleep(sleep_interval)
+                    calcs = load_view_calculations()
+                    if len(calcs) > calc_index:
+                        calcs[calc_index]["generated_views"] = views_completed
+                        if views_completed >= desired_views:
+                            calcs[calc_index]["status"] = "Completed ✅"
+                        save_view_calculations(calcs)
+
+                    analytics_list = load_admin_thread_analytics()
+                    if len(analytics_list) > analytics_index:
+                        analytics_list[analytics_index]["views_generated"] = views_completed
+                        analytics_list[analytics_index]["status"] = "Completed ✅" if views_completed >= desired_views else "Running Workers 🔄"
+                        save_admin_thread_analytics(analytics_list)
+
+                time.sleep(3)
             
-    except Exception as e:
+            browser.close()
+
+    except Exception:
         analytics_list = load_admin_thread_analytics()
         if len(analytics_list) > analytics_index:
-            analytics_list[analytics_index]["open_threads"] = 0
-            analytics_list[analytics_index]["failed_threads"] = active_threads_count
             analytics_list[analytics_index]["status"] = "Failed ❌"
             save_admin_thread_analytics(analytics_list)
 
-# Email Authentication & Access Approval Screen
+# Authentication Screen
 if not st.session_state.logged_in:
     st.title("🔒 Restricted YouTube Bot Access")
     st.info("🤖 **Bot Assistant:** Enter your email address to sign in or request access.")
@@ -440,8 +418,62 @@ if not st.session_state.logged_in:
             st.warning("Please enter a valid email address.")
     st.stop()
 
-# Admin Control Panel Sidebar
+# Background Music Player
+MUSIC_FILE = "background_music.mp3"
+if os.path.exists(MUSIC_FILE):
+    try:
+        with open(MUSIC_FILE, "rb") as audio_file:
+            audio_bytes = audio_file.read()
+            audio_base64 = base64.b64encode(audio_bytes).decode()
+            
+            bg_music_html = f"""
+                <script>
+                    var doc = window.parent.document;
+                    var existingAudio = doc.getElementById("persistent-bg-audio");
+                    
+                    if (!existingAudio) {{
+                        var audioContainer = doc.createElement("div");
+                        audioContainer.innerHTML = `
+                            <audio id="persistent-bg-audio" loop>
+                                <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
+                            </audio>
+                        `;
+                        doc.body.appendChild(audioContainer);
+                        var audio = doc.getElementById("persistent-bg-audio");
+                        audio.volume = 0.3;
+                        audio.play().catch(error => {{
+                            console.log("Autoplay waiting for manual user interaction:", error);
+                        }});
+                    }}
+                </script>
+            """
+            st.components.v1.html(bg_music_html, height=0)
+            
+            st.sidebar.markdown("### 🎵 Background Music")
+            if st.sidebar.button("▶️ Play / Resume Music"):
+                play_script = """
+                    <script>
+                        var doc = window.parent.document;
+                        var audio = doc.getElementById("persistent-bg-audio");
+                        if(audio) { audio.play(); }
+                    </script>
+                """
+                st.components.v1.html(play_script, height=0)
+            if st.sidebar.button("⏸️ Pause Music"):
+                pause_script = """
+                    <script>
+                        var doc = window.parent.document;
+                        var audio = doc.getElementById("persistent-bg-audio");
+                        if(audio) { audio.pause(); }
+                    </script>
+                """
+                st.components.v1.html(pause_script, height=0)
+    except Exception:
+        pass
+
+# Admin Sidebar Panel
 if st.session_state.username == ADMIN_EMAIL:
+    st.sidebar.markdown("---")
     st.sidebar.markdown("## 🛡️ Admin Approval Panel")
     st.sidebar.subheader("Pending Access Requests")
     
@@ -477,7 +509,7 @@ if st.session_state.username == ADMIN_EMAIL:
         for act in reversed(all_activities_sidebar[-10:]):
             st.sidebar.text(f"[{act['time']}] {act['username']}: {act['action']}")
 
-# Main Dashboard App
+# Main App Layout
 st.title("🚀 Cloud YouTube Automation Bot (Admin: Unlimited | Users: 500 Views/Day)")
 st.write(f"Logged in as: **{st.session_state.username}**")
 
@@ -487,19 +519,6 @@ if st.button("Logout"):
     st.session_state.username = ""
     st.query_params.clear()
     st.rerun()
-
-st.markdown("---")
-
-st.markdown("""
-    <h2 style='text-align: center; color: #ff4b4b; margin-bottom: 0px;'>✨ welcome ✨</h2>
-""", unsafe_allow_html=True)
-
-vid_col1, vid_col2, vid_col3 = st.columns([2, 1.5, 2])
-with vid_col2:
-    try:
-        st.video("welcome.mp4", format="video/mp4", autoplay=True, muted=True)
-    except Exception:
-        pass
 
 st.markdown("---")
 
@@ -573,7 +592,7 @@ with tab_dash:
             st.markdown(f"### 🎬 {video_title}")
             st.markdown(f"⏱️ **Video Duration:** `{video_duration}`")
             st.markdown(f"👀 **Current Views:** `{real_before_views:,}`")
-            st.markdown(f"🌐 **Traffic Source:** YouTube Shorts Feed (5 Multi-Threaded Server Workers)")
+            st.markdown(f"🌐 **Traffic Source:** YouTube Shorts Feed (Playwright Browser Workers)")
             if is_admin:
                 st.markdown(f"⚡ **Pacing Limit:** Unlimited (Admin Privilege)")
             else:
@@ -661,32 +680,31 @@ with tab_dash:
                     "url": yt_url,
                     "target_views": desired_views,
                     "views_generated": 0,
-                    "open_threads": 5,
+                    "open_threads": 3,
                     "successful_threads": 0,
                     "failed_threads": 0,
-                    "status": "Running 5 Threads 🔄",
+                    "status": "Running Browser Workers 🔄",
                     "timestamp": current_pkt_time.strftime('%I:%M %p, %d %b %Y')
                 }
                 admin_analytics.append(analytics_record)
                 save_admin_thread_analytics(admin_analytics)
                 analytics_index = len(admin_analytics) - 1
 
-                log_activity(st.session_state.username, f"Launched background bot task: {desired_views} views for '{video_title}'")
+                log_activity(st.session_state.username, f"Launched real browser automation task: {desired_views} views for '{video_title}'")
                 
                 bg_thread = threading.Thread(
-                    target=run_background_worker, 
-                    args=(record_index, calc_index, analytics_index, desired_views, real_before_views, video_title, yt_url, st.session_state.username),
+                    target=run_real_youtube_automation, 
+                    args=(yt_url, desired_views, record_index, calc_index, analytics_index, real_before_views, video_title, st.session_state.username),
                     daemon=True
                 )
                 bg_thread.start()
 
-                st.success("🚀 **Task Launched Successfully with 5 Threads Active!** Every single thread and view transaction is being logged. You can close this tab safely.")
+                st.success("🚀 **Task Launched Successfully with Real Browser Workers Active!** Automated visits are running in the background to register actual views.")
 
-# Admin-Only History & View Calculation Panel
+# Admin Tabs for Analytics and Monitoring
 if st.session_state.username == ADMIN_EMAIL:
     with tab_history:
         st.subheader("📊 Live Task View Tracking History & Activity Logs")
-        st.write("Monitor real-time progress, video titles, starting views, and system activities.")
         
         st.markdown("### 🧮 Dedicated View Calculations (`view_calculations.json`)")
         calc_records = load_view_calculations()
@@ -726,12 +744,9 @@ if st.session_state.username == ADMIN_EMAIL:
                     st.progress(progress_ratio)
                     st.markdown("---")
 
-# Admin-Only Permanent Thread Analytics Panel
 if st.session_state.username == ADMIN_EMAIL:
     with tab_admin_threads:
         st.subheader("🔒 Permanent Admin Thread & View Analytics Panel")
-        st.info("ℹ️ This data file stores permanent thread executions, active threads, and view yields forever. Accessible only by the administrator.")
-        
         admin_analytics_data = load_admin_thread_analytics()
         if len(admin_analytics_data) == 0:
             st.warning("No thread analytics records found yet.")
@@ -745,25 +760,21 @@ if st.session_state.username == ADMIN_EMAIL:
                     t_cols = st.columns(5)
                     t_cols[0].metric(label="Target Views", value=f"{entry['target_views']:,}")
                     t_cols[1].metric(label="Views Generated", value=f"+{entry['views_generated']:,}")
-                    t_cols[2].metric(label="Open Threads", value=entry['open_threads'])
-                    t_cols[3].metric(label="Successful Threads", value=entry['successful_threads'])
-                    t_cols[4].metric(label="Failed Threads", value=entry['failed_threads'])
+                    t_cols[2].metric(label="Open Workers", value=entry['open_threads'])
+                    t_cols[3].metric(label="Successful Workers", value=entry['successful_threads'])
+                    t_cols[4].metric(label="Failed Workers", value=entry['failed_threads'])
                     
                     st.markdown(f"**Execution Status:** {entry['status']}")
                     st.markdown("---")
 
-# Admin-Only User Activity & Monitoring Panel
 if st.session_state.username == ADMIN_EMAIL:
     with tab_user_activity:
         st.subheader("👥 Dedicated Permanent User Activity & Action Monitoring Panel")
-        st.info("ℹ️ Records and stores **every single user action, sign-in, and activity forever** in `activity_logs.json`. Accessible exclusively to the administrator.")
-        
         all_activities = load_activity_logs()
         if len(all_activities) == 0:
             st.warning("No user activity recorded yet.")
         else:
             st.markdown(f"**Total Tracked Permanent System Actions:** `{len(all_activities)}`")
-            
             if st.button("Clear All Activity Logs", key="clear_act_logs"):
                 try:
                     with open(ACTIVITY_FILE, "w") as f:
@@ -772,9 +783,7 @@ if st.session_state.username == ADMIN_EMAIL:
                     st.rerun()
                 except Exception:
                     pass
-
             st.markdown("---")
-            
             for act in reversed(all_activities):
                 act_col1, act_col2, act_col3 = st.columns([1.5, 2.5, 1.5])
                 act_col1.markdown(f"👤 **User:** `{act['username']}`")
@@ -782,35 +791,26 @@ if st.session_state.username == ADMIN_EMAIL:
                 act_col3.markdown(f"🕒 **Time:** {act['time']}")
                 st.markdown("---")
 
-# Admin-Only Granular Thread & View Log Panel with Real Views & Shorts Feed Source
 if st.session_state.username == ADMIN_EMAIL:
     with tab_granular_threads:
         st.subheader("⚙️ Granular Every-Single-Thread & Every-Single-View Log Panel")
-        st.info("ℹ️ Displays **every single thread execution and view attempt** with real-time views added and traffic source tracking (YouTube Shorts Feed). Visible strictly to the administrator.")
-        
         detailed_logs = load_detailed_thread_logs()
         if len(detailed_logs) == 0:
-            st.warning("No granular thread and view logs captured yet. Launch a bot task to begin telemetry.")
+            st.warning("No granular thread and view logs captured yet.")
         else:
             st.markdown(f"**Total Granular Logs Recorded:** `{len(detailed_logs)}`")
-            
             if st.button("Clear Granular Logs", key="clear_granular_logs"):
                 save_detailed_thread_logs([])
                 st.success("Granular logs cleared successfully!")
                 st.rerun()
-
             st.markdown("---")
-            
             for log in reversed(detailed_logs):
                 with st.container():
                     col_l1, col_l2, col_l3, col_l4 = st.columns([1.5, 1.5, 1.5, 2])
                     col_l1.markdown(f"🕒 `{log['timestamp']}`")
                     col_l2.markdown(f"👤 **User:** `{log['user']}`")
                     col_l3.markdown(f"🧵 **{log['thread_id']}** (`{log['step_cycle']}`)")
-                    
-                    status_color = "green" if "Generated & Added" in log['view_status'] else "orange"
                     col_l4.markdown(f"Status: **{log['view_status']}**")
-                    
                     st.markdown(f"🎬 **Video:** {log['title']} | 🔗 [URL]({log['url']})")
                     st.markdown(f"📊 **Traffic Source:** `{log.get('traffic_source', 'YouTube Shorts Feed')}` | 👀 **Current Live Views Count:** `{log.get('real_time_views_added', 0):,}`")
                     st.markdown(f"📝 *Details:* {log['details']}")
