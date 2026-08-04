@@ -7,23 +7,12 @@ import base64
 import urllib.request
 import json as jlib
 from datetime import datetime, timedelta, timezone
-from streamlit_google_auth import Authenticate
 
 st.set_page_config(page_title="Cloud YouTube Automation Bot", page_icon="🚀", layout="wide")
 
-REQUESTS_FILE = "pending_requests.json"
 ACTIVITY_FILE = "activity_logs.json"
 TASKS_FILE = "task_history.json"
 VIEW_CALC_FILE = "view_calculations.json"
-
-# Google Authentication Setup
-# Note: Set up your Google OAuth client ID and secret in your Streamlit secrets (.streamlit/secrets.toml)
-authenticator = Authenticate(
-    secret_credentials_path='client_secret.json',
-    cookie_name='youtube_bot_cookie',
-    cookie_key='youtube_bot_secret_key',
-    redirect_uri='https://madara-youtube-bot.streamlit.app',
-)
 
 # Persistent Activity Logger Helper Functions
 def log_activity(username, action_details):
@@ -94,6 +83,10 @@ def save_view_calculations(calc_list):
         pass
 
 # Initialize session state data
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+    st.session_state.username = ""
+
 if "validated_url" not in st.session_state:
     st.session_state.validated_url = ""
 
@@ -158,37 +151,30 @@ def get_real_youtube_info(url):
 def is_valid_youtube_url(url):
     return bool(get_youtube_video_id(url))
 
-# Check Google Authentication Status
-authenticator.check_auth()
+# Simple Email Access Screen
+if not st.session_state.logged_in:
+    st.title("🔒 YouTube Bot Quick Access")
+    st.info("🤖 **Bot Assistant:** Enter your email address to enter the dashboard.")
 
-if not st.session_state.get('connected', False):
-    st.title("🔒 Restricted YouTube Bot Access")
-    st.info("🤖 **Bot Assistant:** Welcome! Please sign in with your Google account to proceed.")
-    authenticator.login()
+    user_email = st.text_input("Enter your Email Address:")
+    if st.button("Continue to Dashboard"):
+        if user_email and "@" in user_email:
+            st.session_state.logged_in = True
+            st.session_state.username = user_email
+            log_activity(user_email, "Signed in via email.")
+            st.rerun()
+        else:
+            st.warning("Please enter a valid email address.")
     st.stop()
-
-# Set current logged-in user profile info from Google session
-user_info = st.session_state.get('user_info', {})
-current_username = user_info.get('email', 'Google User')
-
-# Admin Control Panel Sidebar (if email matches admin)
-if current_username == "admin@gmail.com" or st.session_state.get('name') == "Admin":
-    st.sidebar.markdown("## 🛡️ Admin Control Panel")
-    st.sidebar.subheader("📋 System Activity File Logs")
-    all_activities = load_activity_logs()
-    if len(all_activities) == 0:
-        st.sidebar.write("No activity recorded yet.")
-    else:
-        for act in reversed(all_activities[-10:]):
-            st.sidebar.text(f"[{act['time']}] {act['username']}: {act['action']}")
 
 # Main Dashboard App
 st.title("🚀 Cloud YouTube Automation Bot")
-st.write(f"Logged in as: **{current_username}**")
+st.write(f"Logged in as: **{st.session_state.username}**")
 
 if st.button("Logout"):
-    log_activity(current_username, "Logged out of the system.")
-    authenticator.logout()
+    log_activity(st.session_state.username, "Logged out of the system.")
+    st.session_state.logged_in = False
+    st.session_state.username = ""
     st.rerun()
 
 st.markdown("---")
@@ -218,11 +204,11 @@ with tab_dash:
     if submit_url_btn:
         if is_valid_youtube_url(url_input):
             st.session_state.validated_url = url_input
-            log_activity(current_username, f"Validated YouTube URL: {url_input}")
+            log_activity(st.session_state.username, f"Validated YouTube URL: {url_input}")
             st.success("URL verified and accepted!")
         else:
             st.session_state.validated_url = ""
-            log_activity(current_username, f"Submitted invalid YouTube URL: {url_input}")
+            log_activity(st.session_state.username, f"Submitted invalid YouTube URL: {url_input}")
             st.error("Invalid YouTube URL! Please check the link.")
             
             if os.path.exists("error.mp3"):
@@ -283,7 +269,7 @@ with tab_dash:
             # 1. Update Task History file
             task_history_list = load_task_history()
             history_record = {
-                "user": current_username,
+                "user": st.session_state.username,
                 "title": video_title,
                 "url": yt_url,
                 "before": real_before_views,
@@ -300,7 +286,7 @@ with tab_dash:
             # 2. Initialize Dedicated View Calculation File Record
             calc_list = load_view_calculations()
             calc_record = {
-                "user": current_username,
+                "user": st.session_state.username,
                 "title": video_title,
                 "url": yt_url,
                 "requested_views": desired_views,
@@ -312,7 +298,7 @@ with tab_dash:
             save_view_calculations(calc_list)
             calc_index = len(calc_list) - 1
 
-            log_activity(current_username, f"Started Shorts feed task: {desired_views} views for '{video_title}'")
+            log_activity(st.session_state.username, f"Started Shorts feed task: {desired_views} views for '{video_title}'")
             
             # Create a 2-Panel Live Telemetry Section
             st.markdown("### 🎛️ Live Automation Telemetry Panels")
@@ -387,7 +373,7 @@ with tab_dash:
                     calc_list[calc_index]["status"] = "Completed ✅"
                     save_view_calculations(calc_list)
 
-                log_activity(current_username, f"Completed Shorts feed task successfully for '{video_title}'")
+                log_activity(st.session_state.username, f"Completed Shorts feed task successfully for '{video_title}'")
                 st.success(f"Task successfully completed! All {desired_views} views registered from Shorts feed.")
             
             except Exception as e:
@@ -401,7 +387,7 @@ with tab_dash:
                     calc_list[calc_index]["status"] = "Failed / Stopped ❌"
                     save_view_calculations(calc_list)
 
-                log_activity(current_username, f"Task interrupted for '{video_title}'")
+                log_activity(st.session_state.username, f"Task interrupted for '{video_title}'")
                 st.error("Task interrupted.")
 
 with tab_history:
