@@ -310,7 +310,6 @@ with tab_dash:
                         error_audio_html = f"""
                             <script>
                                 var audio = new Audio("data:audio/mp3;base64,{audio_base64}");
-                                audio.loop = true;
                                 audio.play().catch(function(error) {{ console.log("Audio play blocked:", error); }});
                             </script>
                         """
@@ -389,8 +388,18 @@ with tab_dash:
 
             log_activity(st.session_state.username, f"Started Shorts feed task: {desired_views} views for '{video_title}'")
             
-            # Create a 2-Panel Live Telemetry Section
+            # Create a Multi-Panel Live Telemetry Section including Dedicated URL Views Panel
             st.markdown("### 🎛️ Live Automation Telemetry Panels")
+            
+            # Dedicated URL Views Separate Panel Box
+            st.markdown("---")
+            st.markdown("#### 🎯 Active URL View Counter Panel")
+            dedicated_view_panel = st.container()
+            with dedicated_view_panel:
+                st.info(f"Targeting active URL: `{yt_url}`")
+                url_views_metric_box = st.empty()
+            st.markdown("---")
+
             panel_col1, panel_col2 = st.columns(2)
             
             with panel_col1:
@@ -399,7 +408,7 @@ with tab_dash:
                 status_text = st.empty()
             
             with panel_col2:
-                st.markdown("#### 📊 Panel 2: Live Metrics & Details")
+                st.markdown("#### 📊 Panel 2: General Live Metrics & Details")
                 live_metrics_box = st.empty()
                 progress_bar = st.progress(0)
             
@@ -419,6 +428,15 @@ with tab_dash:
                         <p style='color: #00ffaa; font-size: 13px; text-align:center;'><b>[Background Tab Active]</b> Playing Shorts Feed session (50% target duration match)...</p>
                     """, unsafe_allow_html=True)
                     
+                    # Update Dedicated URL View Counter Panel Box
+                    url_views_metric_box.markdown(f"""
+                        <div style='background-color: #1e1e1e; padding: 20px; border-radius: 10px; border: 2px solid #00ffaa; text-align: center;'>
+                            <h3 style='color: #ffffff; margin: 0;'>Views Generated on This Specific URL</h3>
+                            <h1 style='color: #00ffaa; font-size: 42px; margin: 10px 0;'>+{current_simulated_views:,}</h1>
+                            <p style='color: #aaaaaa; margin: 0;'>Target Goal: {desired_views:,} views | Status: In Progress 🔄</p>
+                        </div>
+                    """, unsafe_allow_html=True)
+
                     # Update Task History
                     task_history_list = load_task_history()
                     if len(task_history_list) > record_index:
@@ -428,7 +446,7 @@ with tab_dash:
                             task_history_list[record_index]["status"] = "Completed ✅"
                         save_task_history(task_history_list)
 
-                    # Update Dedicated View Calculations File
+                    # Updated Dedicated View Calculations File
                     calc_list = load_view_calculations()
                     if len(calc_list) > calc_index:
                         calc_list[calc_index]["generated_views"] = current_simulated_views
@@ -451,6 +469,15 @@ with tab_dash:
                     
                     time.sleep(0.15)
                 
+                # Final URL Views Counter Panel State on Completion
+                url_views_metric_box.markdown(f"""
+                    <div style='background-color: #1e1e1e; padding: 20px; border-radius: 10px; border: 2px solid #4CAF50; text-align: center;'>
+                        <h3 style='color: #ffffff; margin: 0;'>Views Generated on This Specific URL</h3>
+                        <h1 style='color: #4CAF50; font-size: 42px; margin: 10px 0;'>+{desired_views:,}</h1>
+                        <p style='color: #4CAF50; margin: 0;'>Target Goal Achieved! | Status: Completed ✅</p>
+                    </div>
+                """, unsafe_allow_html=True)
+
                 # Finalize Task & Calculations Status
                 task_history_list = load_task_history()
                 if len(task_history_list) > record_index:
