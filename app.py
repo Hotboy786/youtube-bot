@@ -1,5 +1,7 @@
 import streamlit as st
 import time
+import re
+from datetime import datetime, timedelta
 
 st.set_page_config(page_title="Cloud YouTube Automation Bot", page_icon="🚀", layout="wide")
 
@@ -24,11 +26,18 @@ if "logged_in" not in st.session_state:
 if "task_logs" not in st.session_state:
     st.session_state.task_logs = []
 
-# Authentication Screen with Welcoming Bot Feature
+# Helper function to extract YouTube Video ID for thumbnails
+def get_youtube_thumbnail(url):
+    pattern = r"(?:v=|\/shorts\/|youtu\.be\/)([a-zA-Z0-9_-]{11})"
+    match = re.search(pattern, url)
+    if match:
+        vid_id = match.group(1)
+        return f"https://img.youtube.com/vi/{vid_id}/hqdefault.jpg"
+    return None
+
+# Authentication Screen
 if not st.session_state.logged_in:
     st.title("🔒 Restricted YouTube Bot Access")
-    
-    # Welcoming Bot Message box
     st.info("🤖 **Bot Assistant:** Hello! Welcome to the website. How may I help you today? Please log in or request access below to get started!")
     
     tab1, tab2 = st.tabs(["Login", "Request Access"])
@@ -90,19 +99,49 @@ if st.button("Logout"):
     st.rerun()
 
 st.markdown("---")
+
+# Information Box regarding rate limits
+st.info("ℹ️ **Speed Limit Notice:** You will get **only 100 views in 30 minutes** to comply with steady distribution rules.")
+
+# Inputs for URL and Desired Views
 yt_url = st.text_input("YouTube Short / Video URL:")
+desired_views = st.number_input("How many views do you want?", min_value=10, max_value=10000, value=100, step=10)
+
+# Calculate duration dynamically (100 views = 30 mins)
+total_minutes = int((desired_views / 100) * 30)
+hours = total_minutes // 60
+minutes = total_minutes % 60
+duration_str = f"{hours} hour(s) {minutes} minute(s)" if hours > 0 else f"{minutes} minute(s)"
+
+# Display Thumbnail preview if URL is entered
+thumbnail_url = get_youtube_thumbnail(yt_url) if yt_url else None
+
+if yt_url:
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        if thumbnail_url:
+            st.image(thumbnail_url, caption="Video Thumbnail", width=250)
+        else:
+            st.warning("Invalid YouTube URL format for thumbnail preview.")
+    with col2:
+        st.markdown(f"**Target Views:** {desired_views}")
+        st.markdown(f"**Estimated Total Duration:** {duration_str}")
+        
+        # Calculate completion time
+        completion_time = datetime.now() + timedelta(minutes=total_minutes)
+        st.markdown(f"**Expected Completion Time:** {completion_time.strftime('%I:%M %p, %d %b %Y')}")
 
 if st.button("Start Task"):
     if yt_url:
-        submission_msg = f"[{st.session_state.username}] Submitted: {yt_url}"
+        submission_msg = f"[{st.session_state.username}] Target: {desired_views} views for {yt_url}"
         st.session_state.task_logs.append(submission_msg)
         
-        with st.spinner("Processing task in the cloud... Please wait."):
+        with st.spinner(f"Queuing task for {desired_views} views... Estimated duration: {duration_str}"):
             time.sleep(3)
             
-        completion_msg = f"[DONE] Task completed for: {yt_url}"
+        completion_msg = f"[DONE] Task processed for: {yt_url}"
         st.session_state.task_logs.append(completion_msg)
         
-        st.success(f"Task successfully completed for {yt_url}!")
+        st.success(f"Task successfully started! All {desired_views} views are expected to be delivered by {completion_time.strftime('%I:%M %p')}.")
     else:
-        st.warning("Please enter a valid YouTube URL.")
+        st.warning("Please enter a valid YouTube URL first.")
