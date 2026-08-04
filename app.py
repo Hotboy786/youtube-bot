@@ -114,20 +114,17 @@ if st.button("Logout"):
 
 st.markdown("---")
 
-# Compact Welcome Guide Video (Autoplays securely muted) + Unmute Sound Button
+# Compact Clean Video Layout with Centered "welcome" Text Overlay via Markdown Styling
+st.markdown("""
+    <h2 style='text-align: center; color: #ff4b4b; margin-bottom: 0px;'>✨ welcome ✨</h2>
+""", unsafe_allow_html=True)
+
 vid_col1, vid_col2, vid_col3 = st.columns([2, 1.5, 2])
 with vid_col2:
-    st.caption("📺 Welcome Guide")
     try:
-        st.video("welcome.mp4", format="video/mp4", autoplay=True, muted=True)
+        st.video("welcome.mp4", format="video/mp4", autoplay=True, muted=True, loop=True)
     except Exception:
         pass
-    
-    if st.button("🔊 Unmute / Play Welcome Sound"):
-        try:
-            st.audio("welcome.mp4", autoplay=True)
-        except Exception:
-            st.error("Audio playback file not found.")
 
 st.markdown("---")
 
