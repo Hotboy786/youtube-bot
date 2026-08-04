@@ -114,7 +114,7 @@ if st.button("Logout"):
 
 st.markdown("---")
 
-# Compact Clean Video Layout with Centered "welcome" Text Overlay via Markdown Styling
+# Clean Video Layout with Centered "welcome" Text Overlay (Plays only once)
 st.markdown("""
     <h2 style='text-align: center; color: #ff4b4b; margin-bottom: 0px;'>✨ welcome ✨</h2>
 """, unsafe_allow_html=True)
@@ -122,7 +122,7 @@ st.markdown("""
 vid_col1, vid_col2, vid_col3 = st.columns([2, 1.5, 2])
 with vid_col2:
     try:
-        st.video("welcome.mp4", format="video/mp4", autoplay=True, muted=True, loop=True)
+        st.video("welcome.mp4", format="video/mp4", autoplay=True, muted=True)
     except Exception:
         pass
 
