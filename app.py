@@ -7,49 +7,23 @@ import base64
 import urllib.request
 import json as jlib
 from datetime import datetime, timedelta, timezone
+from streamlit_google_auth import Authenticate
 
-st.set_page_config(page_title=" YouTube Automation Bot", page_icon="🚀", layout="wide")
+st.set_page_config(page_title="Cloud YouTube Automation Bot", page_icon="🚀", layout="wide")
 
 REQUESTS_FILE = "pending_requests.json"
-USERS_FILE = "users.json"
 ACTIVITY_FILE = "activity_logs.json"
 TASKS_FILE = "task_history.json"
 VIEW_CALC_FILE = "view_calculations.json"
 
-# Persistent User Database Helper Functions
-def load_users():
-    default_users = {"admin": "MadaraUchiha786@@!!$$"}
-    if os.path.exists(USERS_FILE):
-        try:
-            with open(USERS_FILE, "r") as f:
-                return json.load(f)
-        except Exception:
-            return default_users
-    return default_users
-
-def save_users(users_dict):
-    try:
-        with open(USERS_FILE, "w") as f:
-            json.dump(users_dict, f)
-    except Exception:
-        pass
-
-# Persistent Pending Requests Helper Functions
-def load_pending_requests():
-    if os.path.exists(REQUESTS_FILE):
-        try:
-            with open(REQUESTS_FILE, "r") as f:
-                return json.load(f)
-        except Exception:
-            return []
-    return []
-
-def save_pending_requests(requests_list):
-    try:
-        with open(REQUESTS_FILE, "w") as f:
-            json.dump(requests_list, f)
-    except Exception:
-        pass
+# Google Authentication Setup
+# Note: Set up your Google OAuth client ID and secret in your Streamlit secrets (.streamlit/secrets.toml)
+authenticator = Authenticate(
+    secret_credentials_path='client_secret.json',
+    cookie_name='youtube_bot_cookie',
+    cookie_key='youtube_bot_secret_key',
+    redirect_uri='https://madara-youtube-bot.streamlit.app',
+)
 
 # Persistent Activity Logger Helper Functions
 def log_activity(username, action_details):
@@ -120,13 +94,6 @@ def save_view_calculations(calc_list):
         pass
 
 # Initialize session state data
-if "users" not in st.session_state:
-    st.session_state.users = load_users()
-
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
-    st.session_state.username = ""
-
 if "validated_url" not in st.session_state:
     st.session_state.validated_url = ""
 
@@ -191,78 +158,22 @@ def get_real_youtube_info(url):
 def is_valid_youtube_url(url):
     return bool(get_youtube_video_id(url))
 
-# Authentication Screen
-if not st.session_state.logged_in:
+# Check Google Authentication Status
+authenticator.check_auth()
+
+if not st.session_state.get('connected', False):
     st.title("🔒 Restricted YouTube Bot Access")
-    st.info("🤖 **Bot Assistant:** Welcome! Please log in or request access below.")
-
-    tab1, tab2 = st.tabs(["Login", "Request Access"])
-    
-    current_pending = load_pending_requests()
-    active_users = load_users()
-
-    with tab1:
-        username = st.text_input("Username", key="login_user")
-        password = st.text_input("Password", type="password", key="login_pass")
-        if st.button("Login"):
-            if username in active_users and active_users[username] == password:
-                st.session_state.logged_in = True
-                st.session_state.username = username
-                log_activity(username, "Logged into the system successfully.")
-                st.rerun()
-            elif username in [r["username"] for r in current_pending]:
-                st.warning("Your request is still pending admin approval.")
-            else:
-                st.error("Invalid credentials or account not approved yet. Please request access.")
-                
-    with tab2:
-        st.write("New users must request access from the admin before logging in.")
-        req_user = st.text_input("Choose a Username to Request", key="req_username")
-        req_pass = st.text_input("Choose a Password", type="password", key="req_pass")
-        if st.button("Submit Request to Admin"):
-            if req_user and req_pass:
-                if req_user in active_users:
-                    st.warning("Username already exists.")
-                elif req_user in [r["username"] for r in current_pending]:
-                    st.warning("Request already pending for this username.")
-                else:
-                    current_pending.append({"username": req_user, "password": req_pass})
-                    save_pending_requests(current_pending)
-                    log_activity(req_user, "Submitted account access request.")
-                    st.success("Request sent successfully! Please wait for the admin to approve it.")
-            else:
-                st.warning("Please fill in both username and password.")
+    st.info("🤖 **Bot Assistant:** Welcome! Please sign in with your Google account to proceed.")
+    authenticator.login()
     st.stop()
 
-# Admin Control Panel Sidebar
-if st.session_state.username == "admin":
-    st.sidebar.markdown("## 🛡️ Admin Control Panel")
-    st.sidebar.subheader("Pending User Approvals")
-    
-    current_pending = load_pending_requests()
-    active_users = load_users()
+# Set current logged-in user profile info from Google session
+user_info = st.session_state.get('user_info', {})
+current_username = user_info.get('email', 'Google User')
 
-    if len(current_pending) == 0:
-        st.sidebar.info("No pending requests.")
-    else:
-        for idx, req in enumerate(current_pending):
-            r_user = req["username"]
-            st.sidebar.text(f"User: {r_user}")
-            col1, col2 = st.sidebar.columns(2)
-            if col1.button(f"Approve", key=f"app_{idx}"):
-                active_users[r_user] = req["password"]
-                save_users(active_users)
-                current_pending.pop(idx)
-                save_pending_requests(current_pending)
-                log_activity("admin", f"Approved account for user: {r_user}")
-                st.rerun()
-            if col2.button(f"Reject", key=f"rej_{idx}"):
-                current_pending.pop(idx)
-                save_pending_requests(current_pending)
-                log_activity("admin", f"Rejected account for user: {r_user}")
-                st.rerun()
-                
-    st.sidebar.markdown("---")
+# Admin Control Panel Sidebar (if email matches admin)
+if current_username == "admin@gmail.com" or st.session_state.get('name') == "Admin":
+    st.sidebar.markdown("## 🛡️ Admin Control Panel")
     st.sidebar.subheader("📋 System Activity File Logs")
     all_activities = load_activity_logs()
     if len(all_activities) == 0:
@@ -272,13 +183,12 @@ if st.session_state.username == "admin":
             st.sidebar.text(f"[{act['time']}] {act['username']}: {act['action']}")
 
 # Main Dashboard App
-st.title(" YouTube Automation Bot")
-st.write(f"Logged in as: **{st.session_state.username}**")
+st.title("🚀 Cloud YouTube Automation Bot")
+st.write(f"Logged in as: **{current_username}**")
 
 if st.button("Logout"):
-    log_activity(st.session_state.username, "Logged out of the system.")
-    st.session_state.logged_in = False
-    st.session_state.username = ""
+    log_activity(current_username, "Logged out of the system.")
+    authenticator.logout()
     st.rerun()
 
 st.markdown("---")
@@ -308,11 +218,11 @@ with tab_dash:
     if submit_url_btn:
         if is_valid_youtube_url(url_input):
             st.session_state.validated_url = url_input
-            log_activity(st.session_state.username, f"Validated YouTube URL: {url_input}")
+            log_activity(current_username, f"Validated YouTube URL: {url_input}")
             st.success("URL verified and accepted!")
         else:
             st.session_state.validated_url = ""
-            log_activity(st.session_state.username, f"Submitted invalid YouTube URL: {url_input}")
+            log_activity(current_username, f"Submitted invalid YouTube URL: {url_input}")
             st.error("Invalid YouTube URL! Please check the link.")
             
             if os.path.exists("error.mp3"):
@@ -373,7 +283,7 @@ with tab_dash:
             # 1. Update Task History file
             task_history_list = load_task_history()
             history_record = {
-                "user": st.session_state.username,
+                "user": current_username,
                 "title": video_title,
                 "url": yt_url,
                 "before": real_before_views,
@@ -390,7 +300,7 @@ with tab_dash:
             # 2. Initialize Dedicated View Calculation File Record
             calc_list = load_view_calculations()
             calc_record = {
-                "user": st.session_state.username,
+                "user": current_username,
                 "title": video_title,
                 "url": yt_url,
                 "requested_views": desired_views,
@@ -402,7 +312,7 @@ with tab_dash:
             save_view_calculations(calc_list)
             calc_index = len(calc_list) - 1
 
-            log_activity(st.session_state.username, f"Started Shorts feed task: {desired_views} views for '{video_title}'")
+            log_activity(current_username, f"Started Shorts feed task: {desired_views} views for '{video_title}'")
             
             # Create a 2-Panel Live Telemetry Section
             st.markdown("### 🎛️ Live Automation Telemetry Panels")
@@ -477,7 +387,7 @@ with tab_dash:
                     calc_list[calc_index]["status"] = "Completed ✅"
                     save_view_calculations(calc_list)
 
-                log_activity(st.session_state.username, f"Completed Shorts feed task successfully for '{video_title}'")
+                log_activity(current_username, f"Completed Shorts feed task successfully for '{video_title}'")
                 st.success(f"Task successfully completed! All {desired_views} views registered from Shorts feed.")
             
             except Exception as e:
@@ -491,7 +401,7 @@ with tab_dash:
                     calc_list[calc_index]["status"] = "Failed / Stopped ❌"
                     save_view_calculations(calc_list)
 
-                log_activity(st.session_state.username, f"Task interrupted for '{video_title}'")
+                log_activity(current_username, f"Task interrupted for '{video_title}'")
                 st.error("Task interrupted.")
 
 with tab_history:
