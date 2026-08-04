@@ -9,17 +9,6 @@ import threading
 import subprocess
 from datetime import datetime, timedelta, timezone
 
-# Auto-install playwright browsers and dependencies on cloud deployment if missing
-try:
-    from playwright.sync_api import sync_playwright
-    with sync_playwright() as p:
-        p.chromium.launch(headless=True)
-except Exception:
-    try:
-        subprocess.run(["playwright", "install", "chromium"], check=True)
-    except Exception:
-        pass
-
 st.set_page_config(page_title="Cloud YouTube Automation Bot", page_icon="🚀", layout="wide")
 
 ADMIN_EMAIL = "kingtechnical421@gmail.com"
@@ -237,138 +226,54 @@ def get_youtube_thumbnail(url):
         return f"https://img.youtube.com/vi/{vid_id}/hqdefault.jpg"
     return None
 
-def fetch_real_youtube_metadata_via_browser(url):
-    """Uses Playwright to extract real title, real view count, and precise duration directly from video DOM and YouTube player objects."""
-    title = "YouTube Shorts Video"
-    total_secs = 0
-    real_views = 0
+def parse_iso8601_duration(duration_str):
+    match = re.match(r'PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?', duration_str)
+    if not match:
+        return 35
+    hours = int(match.group(1)) if match.group(1) else 0
+    minutes = int(match.group(2)) if match.group(2) else 0
+    seconds = int(match.group(3)) if match.group(3) else 0
+    total = hours * 3600 + minutes * 60 + seconds
+    return total if total > 0 else 35
 
+def fetch_real_youtube_metadata_via_api(url):
+    """Fetches exact title, official view count, and precise duration using the official YouTube Data API v3."""
     vid_id = get_youtube_video_id(url)
-    if vid_id:
-        try:
-            oembed_url = f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={vid_id}&format=json"
-            req = urllib.request.Request(oembed_url, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(req, timeout=3) as response:
-                data = jlib.loads(response.read().decode())
-                if "title" in data:
-                    title = data["title"]
-        except Exception:
-            pass
+    if not vid_id:
+        return "YouTube Shorts Video", 1250, "0:35", 35
 
+    api_key = st.secrets.get("YOUTUBE_API_KEY", "")
+    if not api_key:
+        return "YouTube Shorts Video", 1250, "0:35", 35
+
+    api_url = f"https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics,contentDetails&id={vid_id}&key={api_key}"
+    
     try:
-        from playwright.sync_api import sync_playwright
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
-            context = browser.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                viewport={"width": 1280, "height": 720}
-            )
-            page = context.new_page()
-            page.goto(url, timeout=30000)
-            
-            # Wait until video element is rendered
-            try:
-                page.wait_for_selector("video", timeout=10000)
-            except Exception:
-                pass
-            
-            time.sleep(3)
-            
-            scraped_data = page.evaluate("""() => {
-                let duration = 0;
-                let views = 0;
+        req = urllib.request.Request(api_url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=5) as response:
+            data = jlib.loads(response.read().decode())
+            items = data.get("items", [])
+            if items:
+                item = items[0]
+                title = item["snippet"]["title"]
+                real_views = int(item["statistics"].get("viewCount", 1250))
                 
-                // 1. Direct HTML5 video element duration check
-                const videoEl = document.querySelector('video');
-                if (videoEl && videoEl.duration && !isNaN(videoEl.duration) && videoEl.duration > 0) {
-                    duration = videoEl.duration;
-                }
+                duration_iso = item["contentDetails"]["duration"]
+                total_secs = parse_iso8601_duration(duration_iso)
                 
-                // 2. Direct player API check if available
-                try {
-                    const player = document.getElementById('movie_player');
-                    if (player && typeof player.getDuration === 'function') {
-                        const d = player.getDuration();
-                        if (d && d > 0) duration = d;
-                    }
-                } catch(e) {}
+                m = total_secs // 60
+                s = total_secs % 60
+                duration_str = f"{m}:{s:02d}"
                 
-                // 3. Extract view count from formatted strings or page elements
-                try {
-                    const viewEl = document.querySelector('meta[itemprop="interactionCount"]');
-                    if (viewEl && viewEl.content) {
-                        views = parseInt(viewEl.content, 10);
-                    }
-                } catch(e) {}
-                
-                if (!views) {
-                    try {
-                        const textElements = document.querySelectorAll('span, yt-formatted-string');
-                        for (let el of textElements) {
-                            const txt = el.textContent || '';
-                            if (txt.includes('views') || txt.includes('view')) {
-                                const cleanNum = txt.replace(/[^0-9]/g, '');
-                                if (cleanNum.length > 0) {
-                                    const parsedVal = parseInt(cleanNum, 10);
-                                    if (parsedVal > 10) {
-                                        views = parsedVal;
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                    } catch(e) {}
-                }
-                
-                // 4. Fallback search inside script variables
-                try {
-                    const scripts = document.querySelectorAll('script');
-                    for (let script of scripts) {
-                        const content = script.textContent;
-                        if (content && content.includes('viewCount')) {
-                            const match = content.match(/"viewCount":"([0-9]+)"/);
-                            if (match && match[1]) {
-                                views = parseInt(match[1], 10);
-                            }
-                        }
-                        if (content && content.includes('lengthSeconds') && !duration) {
-                            const match = content.match(/"lengthSeconds":"([0-9]+)"/);
-                            if (match && match[1]) {
-                                duration = parseInt(match[1], 10);
-                            }
-                        }
-                    }
-                } catch(e) {}
-                
-                return { duration: duration, views: views };
-            }""")
-            
-            if scraped_data:
-                if scraped_data.get("duration", 0) > 0:
-                    total_secs = int(round(scraped_data["duration"]))
-                if scraped_data.get("views", 0) > 0:
-                    real_views = scraped_data["views"]
-            
-            browser.close()
+                return title, real_views, duration_str, total_secs
     except Exception:
         pass
 
-    if total_secs <= 0:
-        total_secs = 35  # Safe default if element extraction fails
-
-    if real_views <= 0:
-        real_views = 1250
-
-    m = total_secs // 60
-    s = total_secs % 60
-    duration_str = f"{m}:{s:02d}"
-    
-    return title, real_views, duration_str, total_secs
+    return "YouTube Shorts Video", 1250, "0:35", 35
 
 def is_valid_youtube_url(url):
     return bool(get_youtube_video_id(url))
 
-# Real Playwright Automation Background Worker with dynamic watch duration
 def run_real_youtube_automation(target_url, desired_views, record_index, calc_index, analytics_index, real_before_views, task_title, task_user, play_duration_secs):
     pkt_zone = timezone(timedelta(hours=5))
     active_threads_count = 3  
@@ -396,7 +301,6 @@ def run_real_youtube_automation(target_url, desired_views, record_index, calc_in
                         page.goto(target_url, timeout=30000)
                         page.wait_for_selector("video", timeout=10000)
                         
-                        # Dynamically play for half of video length minus 1 second
                         time.sleep(max(1.0, play_duration_secs))
                         context.close()
                         
@@ -570,10 +474,9 @@ with tab_dash:
     if st.session_state.validated_url:
         yt_url = st.session_state.validated_url
         
-        with st.spinner("Launching browser worker to fetch exact video duration and live view count..."):
-            video_title, real_before_views, video_duration, total_secs = fetch_real_youtube_metadata_via_browser(yt_url)
+        with st.spinner("Fetching exact video duration & views via YouTube API..."):
+            video_title, real_before_views, video_duration, total_secs = fetch_real_youtube_metadata_via_api(yt_url)
 
-        # Calculate half length minus 1 second
         half_duration = total_secs / 2.0
         play_duration = max(1.0, half_duration - 1.0)
 
@@ -592,7 +495,7 @@ with tab_dash:
             st.markdown(f"⏱️ **Original Video Length:** `{video_duration}` (`{total_secs} seconds`)")
             st.markdown(f"⏱️ **Calculated Watch Duration per View:** Half length (`{half_duration:.1f}s`) minus 1s $\rightarrow$ **`{play_duration:.1f} seconds`**")
             st.markdown(f"👀 **Current Views:** `{real_before_views:,}`")
-            st.markdown(f"🌐 **Traffic Source:** YouTube Shorts Feed (Playwright Browser Workers)")
+            st.markdown(f"🌐 **Traffic Source:** YouTube Shorts Feed (YouTube Data API v3)")
 
         st.markdown("---")
         st.subheader("Step 3: Select Desired Views")
