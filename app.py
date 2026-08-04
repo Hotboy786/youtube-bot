@@ -114,9 +114,9 @@ if st.button("Logout"):
 
 st.markdown("---")
 
-# Clean Video Layout with Centered "welcome" Text Overlay (Plays only once)
+# Clean Video Layout with Centered "welcome" Text Overlay
 st.markdown("""
-    <h2 style='text-align: center; color: #ff4b4b; margin-bottom: 0px;'>✨ welcome ✨</h2>
+    <h2 style='text-align: center; color: #ff4b4b; margin-bottom: 0px;'>✨ Welcome to Madara YouTube Bot Service ✨</h2>
 """, unsafe_allow_html=True)
 
 vid_col1, vid_col2, vid_col3 = st.columns([2, 1.5, 2])
@@ -141,9 +141,6 @@ if submit_url_btn:
         st.session_state.validated_url = url_input
         st.success("URL verified and accepted!")
     else:
-        st.session_state.validated_url = ""
-        st.error("Invalid YouTube URL! Please check the link.")
-       else:
         st.session_state.validated_url = ""
         st.error("Invalid YouTube URL! Please check the link.")
         
