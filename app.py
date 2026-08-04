@@ -21,6 +21,9 @@ if "logged_in" not in st.session_state:
 if "task_logs" not in st.session_state:
     st.session_state.task_logs = []
 
+if "validated_url" not in st.session_state:
+    st.session_state.validated_url = ""
+
 # Helper function to extract YouTube Video ID for thumbnails
 def get_youtube_thumbnail(url):
     pattern = r"(?:v=|\/shorts\/|youtu\.be\/)([a-zA-Z0-9_-]{11})"
@@ -29,6 +32,11 @@ def get_youtube_thumbnail(url):
         vid_id = match.group(1)
         return f"https://img.youtube.com/vi/{vid_id}/hqdefault.jpg"
     return None
+
+# Helper function to check valid YouTube URL
+def is_valid_youtube_url(url):
+    pattern = r"(?:v=|\/shorts\/|youtu\.be\/)([a-zA-Z0-9_-]{11})"
+    return bool(re.search(pattern, url))
 
 # Authentication Screen
 if not st.session_state.logged_in:
@@ -106,54 +114,73 @@ if st.button("Logout"):
 
 st.markdown("---")
 
-# Display custom welcome video in a much smaller, compact column width
+# Compact Welcome Guide Video playing automatically after login
 vid_col1, vid_col2, vid_col3 = st.columns([2, 1.5, 2])
 with vid_col2:
     st.caption("📺 Welcome Guide")
     try:
-        st.video("welcome.mp4", format="video/mp4")
+        st.video("welcome.mp4", format="video/mp4", autoplay=True, muted=False)
     except Exception:
-        st.warning("Welcome video file 'welcome.mp4' not found.")
+        pass
 
 st.markdown("---")
 
-# Speed Notice (500 views in 1 hour)
+# Speed Notice
 st.info("ℹ️ **Speed Limit Notice:** To comply with safety distribution rules, delivery runs at a rate of **500 views in 1 hour**.")
 
-# Step-by-Step Inputs
-yt_url = st.text_input("Step 1: Enter YouTube Short / Video URL:")
-desired_views = st.number_input("Step 2: How many views do you want?", min_value=50, max_value=50000, value=500, step=50)
+# Step 1: URL Input and URL Submit Button
+st.subheader("Step 1: Enter & Submit YouTube URL")
+url_input = st.text_input("YouTube Short / Video URL:")
+submit_url_btn = st.button("Submit URL")
 
-# Calculate duration dynamically (500 views = 60 mins)
-total_minutes = int((desired_views / 500) * 60)
-hours = total_minutes // 60
-minutes = total_minutes % 60
-duration_str = f"{hours} hour(s) {minutes} minute(s)" if hours > 0 else f"{minutes} minute(s)"
+if submit_url_btn:
+    if is_valid_youtube_url(url_input):
+        st.session_state.validated_url = url_input
+        st.success("URL verified and accepted!")
+    else:
+        st.session_state.validated_url = ""
+        st.error("Invalid YouTube URL! Please check the link.")
+        try:
+            st.audio("error.mp3", autoplay=True)
+        except Exception:
+            pass
 
-# PKT Timezone (UTC + 5)
-pkt_zone = timezone(timedelta(hours=5))
-current_pkt_time = datetime.now(pkt_zone)
-completion_time = current_pkt_time + timedelta(minutes=total_minutes)
-
-thumbnail_url = get_youtube_thumbnail(yt_url) if yt_url else None
-
-if yt_url:
+# Proceed with steps if a valid URL has been submitted
+if st.session_state.validated_url:
+    yt_url = st.session_state.validated_url
+    
     st.markdown("---")
-    st.subheader("Step 3: Preview & Target Information")
+    st.subheader("Step 2: Preview & Target Information")
+    
+    thumbnail_url = get_youtube_thumbnail(yt_url)
     col1, col2 = st.columns([1, 2])
     with col1:
         if thumbnail_url:
             st.image(thumbnail_url, caption="Fetched Video Thumbnail", width=250)
-        else:
-            st.warning("Invalid YouTube URL format for thumbnail preview.")
     with col2:
-        st.markdown(f"**Target Views:** {desired_views}")
-        st.markdown(f"**Estimated Total Duration:** {duration_str}")
-        st.markdown(f"**Expected Completion Time (PKT):** {completion_time.strftime('%I:%M %p, %d %b %Y')}")
+        st.markdown(f"**Video Status:** Ready for Processing")
+        st.markdown(f"**Estimated Base Duration:** Standard Short / Video Format")
 
-st.markdown("---")
-if st.button("Step 4: Start Task & Run Live Views"):
-    if yt_url:
+    st.markdown("---")
+    st.subheader("Step 3: Select Desired Views")
+    desired_views = st.number_input("How many views do you want?", min_value=50, max_value=50000, value=500, step=50)
+
+    # Calculate duration dynamically (500 views = 60 mins)
+    total_minutes = int((desired_views / 500) * 60)
+    hours = total_minutes // 60
+    minutes = total_minutes % 60
+    duration_str = f"{hours} hour(s) {minutes} minute(s)" if hours > 0 else f"{minutes} minute(s)"
+
+    # PKT Timezone (UTC + 5)
+    pkt_zone = timezone(timedelta(hours=5))
+    current_pkt_time = datetime.now(pkt_zone)
+    completion_time = current_pkt_time + timedelta(minutes=total_minutes)
+
+    st.markdown(f"**Estimated Total Duration:** {duration_str}")
+    st.markdown(f"**Expected Completion Time (PKT):** {completion_time.strftime('%I:%M %p, %d %b %Y')}")
+
+    st.markdown("---")
+    if st.button("Step 4: Start Task & Run Live Views"):
         submission_msg = f"[{st.session_state.username}] Target: {desired_views} views for {yt_url}"
         st.session_state.task_logs.append(submission_msg)
         
@@ -178,5 +205,3 @@ if st.button("Step 4: Start Task & Run Live Views"):
         st.session_state.task_logs.append(completion_msg)
         
         st.success(f"Task successfully completed! All {desired_views} views delivered. Finished at {completion_time.strftime('%I:%M %p')} PKT.")
-    else:
-        st.warning("Please enter a valid YouTube URL first.")
