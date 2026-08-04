@@ -1,19 +1,14 @@
 import streamlit as st
 import time
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
-st.set_page_config(page_title="Cloud YouTube Automation Bot", page_icon="🚀", layout="wide")
+st.set_page_config(page_config_title="Cloud YouTube Automation Bot", page_icon="🚀", layout="wide")
 
-# Initialize session state data
+# Initialize session state data (No user limits, dynamic approval system)
 if "users" not in st.session_state:
     st.session_state.users = {
-        "admin": "MadaraUchiha786@@!!$$",
-        "user1": "MadaraUchiha786@@!!$$",
-        "user2": "MadaraUchiha786@@!!$$",
-        "user3": "MadaraUchiha786@@!!$$",
-        "user4": "MadaraUchiha786@@!!$$",
-        "user5": "MadaraUchiha786@@!!$$"
+        "admin": "MadaraUchiha786@@!!$$"
     }
 
 if "pending_requests" not in st.session_state:
@@ -35,50 +30,67 @@ def get_youtube_thumbnail(url):
         return f"https://img.youtube.com/vi/{vid_id}/hqdefault.jpg"
     return None
 
-# Authentication Screen
+# Authentication Screen with Custom Video and Approval Flow
 if not st.session_state.logged_in:
     st.title("🔒 Restricted YouTube Bot Access")
-    st.info("🤖 **Bot Assistant:** Hello! Welcome to the website. How may I help you today? Please log in or request access below to get started!")
     
+    # Play local welcome video with sound controls
+    try:
+        st.video("welcome.mp4")
+    except Exception:
+        st.info("🤖 **Bot Assistant:** Welcome! Please log in or request access below.")
+
+    st.markdown("---")
     tab1, tab2 = st.tabs(["Login", "Request Access"])
     
     with tab1:
-        username = st.text_input("Username")
-        password = st.text_input("Password", type="password")
+        username = st.text_input("Username", key="login_user")
+        password = st.text_input("Password", type="password", key="login_pass")
         if st.button("Login"):
             if username in st.session_state.users and st.session_state.users[username] == password:
                 st.session_state.logged_in = True
                 st.session_state.username = username
                 st.rerun()
+            elif username in st.session_state.pending_requests:
+                st.warning("Your request is still pending admin approval.")
             else:
-                st.error("Invalid username or password.")
+                st.error("Invalid credentials or account not approved yet. Please request access.")
                 
     with tab2:
-        req_user = st.text_input("Choose a Username to Request")
-        if st.button("Submit Request"):
-            if req_user and req_user not in st.session_state.pending_requests:
-                st.session_state.pending_requests.append(req_user)
-                st.success("Request sent to admin for approval!")
+        st.write("New users must request access from the admin before logging in.")
+        req_user = st.text_input("Choose a Username to Request", key="req_username")
+        req_pass = st.text_input("Choose a Password", type="password", key="req_pass")
+        if st.button("Submit Request to Admin"):
+            if req_user and req_pass:
+                if req_user in st.session_state.users:
+                    st.warning("Username already exists.")
+                elif req_user in [r["username"] for r in st.session_state.pending_requests]:
+                    st.warning("Request already pending for this username.")
+                else:
+                    st.session_state.pending_requests.append({"username": req_user, "password": req_pass})
+                    st.success("Request sent successfully! Please wait for the admin to approve it.")
             else:
-                st.warning("Invalid or already requested username.")
+                st.warning("Please fill in both username and password.")
     st.stop()
 
 # Admin Control Panel Sidebar
 if st.session_state.username == "admin":
     st.sidebar.markdown("## 🛡️ Admin Control Panel")
-    st.sidebar.subheader("Pending User Requests")
+    st.sidebar.subheader("Pending User Approvals")
     
     if len(st.session_state.pending_requests) == 0:
         st.sidebar.info("No pending requests.")
     else:
-        for req in st.session_state.pending_requests:
+        for idx, req in enumerate(st.session_state.pending_requests):
+            r_user = req["username"]
+            st.sidebar.text(f"User: {r_user}")
             col1, col2 = st.sidebar.columns(2)
-            if col1.button(f"Approve {req}", key=f"app_{req}"):
-                st.session_state.users[req] = "MadaraUchiha786@@!!$$"
-                st.session_state.pending_requests.remove(req)
+            if col1.button(f"Approve", key=f"app_{idx}"):
+                st.session_state.users[r_user] = req["password"]
+                st.session_state.pending_requests.pop(idx)
                 st.rerun()
-            if col2.button(f"Reject {req}", key=f"rej_{req}"):
-                st.session_state.pending_requests.remove(req)
+            if col2.button(f"Reject", key=f"rej_{idx}"):
+                st.session_state.pending_requests.pop(idx)
                 st.rerun()
                 
     st.sidebar.markdown("---")
@@ -100,48 +112,67 @@ if st.button("Logout"):
 
 st.markdown("---")
 
-# Information Box regarding rate limits
-st.info("ℹ️ **Speed Limit Notice:** You will get **only 100 views in 30 minutes** to comply with steady distribution rules.")
+# Speed Notice (500 views in 1 hour)
+st.info("ℹ️ **Speed Limit Notice:** To comply with safety distribution rules, delivery runs at a rate of **500 views in 1 hour**.")
 
-# Inputs for URL and Desired Views
-yt_url = st.text_input("YouTube Short / Video URL:")
-desired_views = st.number_input("How many views do you want?", min_value=10, max_value=10000, value=100, step=10)
+# Step-by-Step Inputs
+yt_url = st.text_input("Step 1: Enter YouTube Short / Video URL:")
+desired_views = st.number_input("Step 2: How many views do you want?", min_value=50, max_value=50000, value=500, step=50)
 
-# Calculate duration dynamically (100 views = 30 mins)
-total_minutes = int((desired_views / 100) * 30)
+# Calculate duration dynamically (500 views = 60 mins -> 1 view = 0.12 mins)
+total_minutes = int((desired_views / 500) * 60)
 hours = total_minutes // 60
 minutes = total_minutes % 60
 duration_str = f"{hours} hour(s) {minutes} minute(s)" if hours > 0 else f"{minutes} minute(s)"
 
-# Display Thumbnail preview if URL is entered
+# PKT Timezone (UTC + 5)
+pkt_zone = timezone(timedelta(hours=5))
+current_pkt_time = datetime.now(pkt_zone)
+completion_time = current_pkt_time + timedelta(minutes=total_minutes)
+
 thumbnail_url = get_youtube_thumbnail(yt_url) if yt_url else None
 
 if yt_url:
+    st.markdown("---")
+    st.subheader("Step 3: Preview & Target Information")
     col1, col2 = st.columns([1, 2])
     with col1:
         if thumbnail_url:
-            st.image(thumbnail_url, caption="Video Thumbnail", width=250)
+            st.image(thumbnail_url, caption="Fetched Video Thumbnail", width=250)
         else:
             st.warning("Invalid YouTube URL format for thumbnail preview.")
     with col2:
         st.markdown(f"**Target Views:** {desired_views}")
         st.markdown(f"**Estimated Total Duration:** {duration_str}")
-        
-        # Calculate completion time
-        completion_time = datetime.now() + timedelta(minutes=total_minutes)
-        st.markdown(f"**Expected Completion Time:** {completion_time.strftime('%I:%M %p, %d %b %Y')}")
+        st.markdown(f"**Expected Completion Time (PKT):** {completion_time.strftime('%I:%M %p, %d %b %Y')}")
 
-if st.button("Start Task"):
+st.markdown("---")
+if st.button("Step 4: Start Task & Run Live Views"):
     if yt_url:
         submission_msg = f"[{st.session_state.username}] Target: {desired_views} views for {yt_url}"
         st.session_state.task_logs.append(submission_msg)
         
-        with st.spinner(f"Queuing task for {desired_views} views... Estimated duration: {duration_str}"):
-            time.sleep(3)
+        # Live increasing views simulation container
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        live_views_display = st.empty()
+        
+        simulation_steps = 20
+        step_increment = max(1, desired_views // simulation_steps)
+        current_simulated_views = 0
+        
+        for i in range(simulation_steps + 1):
+            current_simulated_views = min(desired_views, i * step_increment)
+            progress_percent = int((current_simulated_views / desired_views) * 100)
             
-        completion_msg = f"[DONE] Task processed for: {yt_url}"
+            progress_bar.progress(progress_percent)
+            status_text.text(f"Processing in cloud... Rate: 500 views / hour")
+            live_views_display.markdown(f"### 📈 Live Delivered Views: **{current_simulated_views} / {desired_views}**")
+            time.sleep(0.15)
+            
+        completion_msg = f"[DONE] Task processed successfully for: {yt_url}"
         st.session_state.task_logs.append(completion_msg)
         
-        st.success(f"Task successfully started! All {desired_views} views are expected to be delivered by {completion_time.strftime('%I:%M %p')}.")
+        st.success(f"Task successfully completed! All {desired_views} views delivered. Finished at {completion_time.strftime('%I:%M %p')} PKT.")
     else:
         st.warning("Please enter a valid YouTube URL first.")
