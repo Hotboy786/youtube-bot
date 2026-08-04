@@ -3,11 +3,12 @@ import time
 import re
 import json
 import os
+import base64
 import urllib.request
 import json as jlib
 from datetime import datetime, timedelta, timezone
 
-st.set_page_config(page_title=" YouTube Automation Bot", page_icon="🚀", layout="wide")
+st.set_page_config(page_title="Cloud YouTube Automation Bot", page_icon="🚀", layout="wide")
 
 REQUESTS_FILE = "pending_requests.json"
 USERS_FILE = "users.json"
@@ -287,18 +288,24 @@ with tab_dash:
             log_activity(st.session_state.username, f"Submitted invalid YouTube URL: {url_input}")
             st.error("Invalid YouTube URL! Please check the link.")
             
-            # Browser audio elements often require user interaction context or direct base64/remote URL strings. 
-            # Using standard components.html to enforce audio playback on error:
-            error_audio_html = """
-                <audio autoplay controls style="display:none;">
-                    <source src="https://www.myinstants.com/media/sounds/erro.mp3" type="audio/mpeg">
-                </audio>
-                <script>
-                    var audio = new Audio('https://www.myinstants.com/media/sounds/erro.mp3');
-                    audio.play().catch(function(error) { console.log("Audio play blocked:", error); });
-                </script>
-            """
-            st.components.v1.html(error_audio_html, height=0)
+            # Load local error.mp3 and play it via base64 data stream
+            if os.path.exists("error.mp3"):
+                try:
+                    with open("error.mp3", "rb") as audio_file:
+                        audio_bytes = audio_file.read()
+                        audio_base64 = base64.b64encode(audio_bytes).decode()
+                        error_audio_html = f"""
+                            <audio autoplay>
+                                <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
+                            </audio>
+                            <script>
+                                var audio = new Audio("data:audio/mp3;base64,{audio_base64}");
+                                audio.play().catch(function(error) {{ console.log("Audio play blocked:", error); }});
+                            </script>
+                        """
+                        st.components.v1.html(error_audio_html, height=0)
+                except Exception:
+                    pass
 
     if st.session_state.validated_url:
         yt_url = st.session_state.validated_url
@@ -366,7 +373,6 @@ with tab_dash:
                 current_simulated_views = min(desired_views, i * step_increment)
                 progress_percent = int((current_simulated_views / desired_views) * 100)
                 
-                # Update current count inside saved file list
                 task_history_list = load_task_history()
                 if len(task_history_list) > record_index:
                     task_history_list[record_index]["current"] = real_before_views + current_simulated_views
@@ -377,7 +383,6 @@ with tab_dash:
                 live_views_display.markdown(f"### 📈 Live Delivered Views: **{real_before_views + current_simulated_views:,}** (Fetched initial: {real_before_views:,})")
                 time.sleep(0.15)
                 
-            # Mark completed in persistent file
             task_history_list = load_task_history()
             if len(task_history_list) > record_index:
                 task_history_list[record_index]["status"] = "Completed ✅"
