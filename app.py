@@ -242,9 +242,10 @@ def get_real_youtube_info(url):
     title = "YouTube Shorts Video"
     real_views = 0
     duration_str = "0:35"
+    total_secs = 35
     
     if not vid_id:
-        return title, real_views, duration_str
+        return title, real_views, duration_str, total_secs
         
     try:
         oembed_url = f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={vid_id}&format=json"
@@ -293,13 +294,13 @@ def get_real_youtube_info(url):
     if real_views == 0:
         real_views = 1250
         
-    return title, real_views, duration_str
+    return title, real_views, duration_str, total_secs
 
 def is_valid_youtube_url(url):
     return bool(get_youtube_video_id(url))
 
-# Real Playwright Automation Background Worker
-def run_real_youtube_automation(target_url, desired_views, record_index, calc_index, analytics_index, real_before_views, task_title, task_user):
+# Real Playwright Automation Background Worker with dynamic watch duration
+def run_real_youtube_automation(target_url, desired_views, record_index, calc_index, analytics_index, real_before_views, task_title, task_user, play_duration_secs):
     pkt_zone = timezone(timedelta(hours=5))
     active_threads_count = 3  
     views_completed = 0
@@ -325,7 +326,9 @@ def run_real_youtube_automation(target_url, desired_views, record_index, calc_in
                         page = context.new_page()
                         page.goto(target_url, timeout=30000)
                         page.wait_for_selector("video", timeout=10000)
-                        time.sleep(6)
+                        
+                        # Dynamically play for half of video length minus 1 second
+                        time.sleep(max(1.0, play_duration_secs))
                         context.close()
                         
                         views_completed += 1
@@ -341,7 +344,7 @@ def run_real_youtube_automation(target_url, desired_views, record_index, calc_in
                             "view_status": "Generated & Added ✅",
                             "traffic_source": "YouTube Shorts Feed (Automated Browser)",
                             "real_time_views_added": views_completed,
-                            "details": f"Successfully loaded video via headless browser node. View count incremented."
+                            "details": f"Played for {play_duration_secs:.1f}s (Half length - 1s). View count incremented."
                         }
                         detailed_logs.append(thread_log_entry)
                         save_detailed_thread_logs(detailed_logs)
@@ -498,11 +501,15 @@ with tab_dash:
     if st.session_state.validated_url:
         yt_url = st.session_state.validated_url
         
-        with st.spinner("Fetching accurate video metadata..."):
-            video_title, real_before_views, video_duration = get_real_youtube_info(yt_url)
+        with st.spinner("Fetching accurate video metadata & duration..."):
+            video_title, real_before_views, video_duration, total_secs = get_real_youtube_info(yt_url)
+
+        # Calculate half length minus 1 second
+        half_duration = total_secs / 2.0
+        play_duration = max(1.0, half_duration - 1.0)
 
         st.markdown("---")
-        st.subheader("Step 2: Preview & Shorts Feed Target Setup")
+        st.subheader("Step 2: Preview & Watch Duration Settings")
         
         thumbnail_url = get_youtube_thumbnail(yt_url)
         col1, col2 = st.columns([1, 2])
@@ -513,13 +520,10 @@ with tab_dash:
                 
         with col2:
             st.markdown(f"### 🎬 {video_title}")
-            st.markdown(f"⏱️ **Video Duration:** `{video_duration}`")
+            st.markdown(f"⏱️ **Original Video Length:** `{video_duration}` (`{total_secs} seconds`)")
+            st.markdown(f"⏱️ **Calculated Watch Duration per View:** Half length (`{half_duration:.1f}s`) minus 1s $\rightarrow$ **`{play_duration:.1f} seconds`**")
             st.markdown(f"👀 **Current Views:** `{real_before_views:,}`")
             st.markdown(f"🌐 **Traffic Source:** YouTube Shorts Feed (Playwright Browser Workers)")
-            if is_admin:
-                st.markdown(f"⚡ **Pacing Limit:** Unlimited (Admin Privilege)")
-            else:
-                st.markdown(f"⚡ **Pacing Limit:** 1,000 views / hour (Max 500 views per day)")
 
         st.markdown("---")
         st.subheader("Step 3: Select Desired Views")
@@ -613,16 +617,16 @@ with tab_dash:
                 save_admin_thread_analytics(admin_analytics)
                 analytics_index = len(admin_analytics) - 1
 
-                log_activity(st.session_state.username, f"Launched real browser automation task: {desired_views} views for '{video_title}'")
+                log_activity(st.session_state.username, f"Launched real browser automation task: {desired_views} views for '{video_title}' (Play time: {play_duration:.1f}s)")
                 
                 bg_thread = threading.Thread(
                     target=run_real_youtube_automation, 
-                    args=(yt_url, desired_views, record_index, calc_index, analytics_index, real_before_views, video_title, st.session_state.username),
+                    args=(yt_url, desired_views, record_index, calc_index, analytics_index, real_before_views, video_title, st.session_state.username, play_duration),
                     daemon=True
                 )
                 bg_thread.start()
 
-                st.success("🚀 **Task Launched Successfully with Real Browser Workers Active!** Automated visits are running in the background to register actual views.")
+                st.success("🚀 **Task Launched Successfully!** Background browser workers will play each view for the calculated duration.")
 
 # Admin Tabs for Analytics and Monitoring
 if st.session_state.username == ADMIN_EMAIL:
