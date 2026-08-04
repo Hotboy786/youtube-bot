@@ -12,6 +12,7 @@ st.set_page_config(page_title="Cloud YouTube Automation Bot", page_icon="🚀", 
 REQUESTS_FILE = "pending_requests.json"
 USERS_FILE = "users.json"
 ACTIVITY_FILE = "activity_logs.json"
+TASKS_FILE = "task_history.json"
 
 # Persistent User Database Helper Functions
 def load_users():
@@ -82,6 +83,23 @@ def load_activity_logs():
             return []
     return []
 
+# Persistent Task History Helper Functions
+def load_task_history():
+    if os.path.exists(TASKS_FILE):
+        try:
+            with open(TASKS_FILE, "r") as f:
+                return json.load(f)
+        except Exception:
+            return []
+    return []
+
+def save_task_history(history_list):
+    try:
+        with open(TASKS_FILE, "w") as f:
+            json.dump(history_list, f)
+    except Exception:
+        pass
+
 # Initialize session state data
 if "users" not in st.session_state:
     st.session_state.users = load_users()
@@ -89,9 +107,6 @@ if "users" not in st.session_state:
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.username = ""
-
-if "task_history" not in st.session_state:
-    st.session_state.task_history = []
 
 if "validated_url" not in st.session_state:
     st.session_state.validated_url = ""
@@ -110,7 +125,6 @@ def get_youtube_thumbnail(url):
         return f"https://img.youtube.com/vi/{vid_id}/hqdefault.jpg"
     return None
 
-# Helper to fetch real title and live view counts using public oEmbed/metadata scraping
 def get_real_youtube_info(url):
     vid_id = get_youtube_video_id(url)
     title = "YouTube Video / Short"
@@ -241,7 +255,6 @@ if st.button("Logout"):
 
 st.markdown("---")
 
-# Clean Video Layout with Centered "welcome" Text Overlay
 st.markdown("""
     <h2 style='text-align: center; color: #ff4b4b; margin-bottom: 0px;'>✨ welcome ✨</h2>
 """, unsafe_allow_html=True)
@@ -255,13 +268,11 @@ with vid_col2:
 
 st.markdown("---")
 
-# Navigation Tabs for Dashboard and History Panel
 tab_dash, tab_history = st.tabs(["🚀 Automation Dashboard", "📊 Live Task & View History"])
 
 with tab_dash:
     st.info("ℹ️ **Speed Limit Notice:** To comply with safety distribution rules, delivery runs at a rate of **500 views in 1 hour**.")
 
-    # Step 1: URL Input and URL Submit Button
     st.subheader("Step 1: Enter & Submit YouTube URL")
     url_input = st.text_input("YouTube Short / Video URL:")
     submit_url_btn = st.button("Submit URL")
@@ -276,14 +287,19 @@ with tab_dash:
             log_activity(st.session_state.username, f"Submitted invalid YouTube URL: {url_input}")
             st.error("Invalid YouTube URL! Please check the link.")
             
-            audio_html = """
-                <audio autoplay>
-                    <source src="error.mp3" type="audio/mp3">
+            # Browser audio elements often require user interaction context or direct base64/remote URL strings. 
+            # Using standard components.html to enforce audio playback on error:
+            error_audio_html = """
+                <audio autoplay controls style="display:none;">
+                    <source src="https://www.myinstants.com/media/sounds/erro.mp3" type="audio/mpeg">
                 </audio>
+                <script>
+                    var audio = new Audio('https://www.myinstants.com/media/sounds/erro.mp3');
+                    audio.play().catch(function(error) { console.log("Audio play blocked:", error); });
+                </script>
             """
-            st.markdown(audio_html, unsafe_allow_html=True)
+            st.components.v1.html(error_audio_html, height=0)
 
-    # Proceed with steps if a valid URL has been submitted
     if st.session_state.validated_url:
         yt_url = st.session_state.validated_url
         
@@ -320,6 +336,8 @@ with tab_dash:
             with st.spinner("Fetching real video data from YouTube..."):
                 video_title, real_before_views = get_real_youtube_info(yt_url)
             
+            task_history_list = load_task_history()
+            
             history_record = {
                 "user": st.session_state.username,
                 "title": video_title,
@@ -330,8 +348,9 @@ with tab_dash:
                 "status": "In Progress",
                 "time": current_pkt_time.strftime('%I:%M %p, %d %b')
             }
-            st.session_state.task_history.append(history_record)
-            record_index = len(st.session_state.task_history) - 1
+            task_history_list.append(history_record)
+            save_task_history(task_history_list)
+            record_index = len(task_history_list) - 1
 
             log_activity(st.session_state.username, f"Started task: {desired_views} views for '{video_title}' ({yt_url})")
             
@@ -347,16 +366,24 @@ with tab_dash:
                 current_simulated_views = min(desired_views, i * step_increment)
                 progress_percent = int((current_simulated_views / desired_views) * 100)
                 
-                st.session_state.task_history[record_index]["current"] = real_before_views + current_simulated_views
+                # Update current count inside saved file list
+                task_history_list = load_task_history()
+                if len(task_history_list) > record_index:
+                    task_history_list[record_index]["current"] = real_before_views + current_simulated_views
+                    save_task_history(task_history_list)
                 
                 progress_bar.progress(progress_percent)
                 status_text.text(f"Processing in cloud... Rate: 500 views / hour")
                 live_views_display.markdown(f"### 📈 Live Delivered Views: **{real_before_views + current_simulated_views:,}** (Fetched initial: {real_before_views:,})")
                 time.sleep(0.15)
                 
-            st.session_state.task_history[record_index]["status"] = "Completed ✅"
+            # Mark completed in persistent file
+            task_history_list = load_task_history()
+            if len(task_history_list) > record_index:
+                task_history_list[record_index]["status"] = "Completed ✅"
+                save_task_history(task_history_list)
+
             log_activity(st.session_state.username, f"Completed task successfully for '{video_title}'")
-            
             st.success(f"Task successfully completed! All {desired_views} views delivered. Finished at {completion_time.strftime('%I:%M %p')} PKT.")
 
 with tab_history:
@@ -373,10 +400,11 @@ with tab_history:
             
     st.markdown("---")
     st.subheader("🎯 Video View Progress Tracking")
-    if len(st.session_state.task_history) == 0:
+    saved_tasks = load_task_history()
+    if len(saved_tasks) == 0:
         st.info("No tasks executed in this session yet.")
     else:
-        for idx, item in enumerate(reversed(st.session_state.task_history)):
+        for idx, item in enumerate(reversed(saved_tasks)):
             with st.container():
                 st.markdown(f"### 🎬 {item['title']}")
                 cols = st.columns([1.5, 1, 1, 1.2])
