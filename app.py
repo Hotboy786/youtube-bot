@@ -307,9 +307,10 @@ with tab_dash:
                     with open("error.mp3", "rb") as audio_file:
                         audio_bytes = audio_file.read()
                         audio_base64 = base64.b64encode(audio_bytes).decode()
+                        # Appending timestamp parameter so Streamlit forces browser to treat it as a fresh script execution every click
                         error_audio_html = f"""
                             <script>
-                                var audio = new Audio("data:audio/mp3;base64,{audio_base64}");
+                                var audio = new Audio("data:audio/mp3;base64,{audio_base64}?" + new Date().getTime());
                                 audio.play().catch(function(error) {{ console.log("Audio play blocked:", error); }});
                             </script>
                         """
