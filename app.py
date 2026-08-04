@@ -15,9 +15,9 @@ st.set_page_config(page_title="Cloud YouTube Automation Bot", page_icon="🚀", 
 # CUSTOM SMALL PNG AT THE BEGINNING OF THE WEB
 # ==========================================
 if os.path.exists("logo.png"):
-    st.image("logo.png", width=300)
+    st.image("logo.png", width=150)
 else:
-    st.image("https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=300&auto=format&fit=crop", width=300)
+    st.image("https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=300&auto=format&fit=crop", width=150)
 
 ADMIN_EMAIL = "kingtechnical421@gmail.com"
 
@@ -28,6 +28,7 @@ TASKS_FILE = "task_history.json"
 VIEW_CALC_FILE = "view_calculations.json"
 ADMIN_THREAD_ANALYTICS_FILE = "admin_thread_analytics.json"
 DETAILED_THREAD_LOGS_FILE = "detailed_thread_logs.json"
+DAILY_LIMITS_FILE = "daily_user_limits.json"
 
 # Persistent Approved Users Helper Functions
 def load_approved_users():
@@ -166,6 +167,53 @@ def save_detailed_thread_logs(logs_list):
     except Exception:
         pass
 
+# Daily Limit Tracking Helper Functions (500 views max per day per non-admin user)
+def load_daily_limits():
+    if os.path.exists(DAILY_LIMITS_FILE):
+        try:
+            with open(DAILY_LIMITS_FILE, "r") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+    return {}
+
+def save_daily_limits(limits_dict):
+    try:
+        with open(DAILY_LIMITS_FILE, "w") as f:
+            json.dump(limits_dict, f)
+    except Exception:
+        pass
+
+def get_user_daily_stats(username):
+    pkt_zone = timezone(timedelta(hours=5))
+    today_str = datetime.now(pkt_zone).strftime('%Y-%m-%d')
+    
+    limits_data = load_daily_limits()
+    if username not in limits_data or limits_data[username].get("date") != today_str:
+        # Reset or initialize for today
+        limits_data[username] = {
+            "date": today_str,
+            "views_used": 0
+        }
+        save_daily_limits(limits_data)
+        
+    return limits_data[username]["views_used"]
+
+def add_user_daily_usage(username, views_count):
+    pkt_zone = timezone(timedelta(hours=5))
+    today_str = datetime.now(pkt_zone).strftime('%Y-%m-%d')
+    
+    limits_data = load_daily_limits()
+    if username not in limits_data or limits_data[username].get("date") != today_str:
+        limits_data[username] = {
+            "date": today_str,
+            "views_used": views_count
+        }
+    else:
+        limits_data[username]["views_used"] += views_count
+        
+    save_daily_limits(limits_data)
+
 # ==========================================
 # SESSION STATE & PERSISTENT LOGIN CACHE FIX
 # ==========================================
@@ -174,7 +222,6 @@ if "logged_in" not in st.session_state:
 if "username" not in st.session_state:
     st.session_state.username = ""
 
-# Automatically restore admin session if query params or cached browser state dictates
 query_params = st.query_params
 if not st.session_state.logged_in and "user" in query_params:
     cached_user = query_params["user"]
@@ -203,7 +250,7 @@ def get_real_youtube_info(url):
     vid_id = get_youtube_video_id(url)
     title = "YouTube Shorts Video"
     real_views = 0
-    duration_str = "0:30"
+    duration_str = "0:35"
     
     if not vid_id:
         return title, real_views, duration_str
@@ -235,14 +282,27 @@ def get_real_youtube_info(url):
                 if view_match:
                     real_views = int(view_match.group(1).replace(",", ""))
             if view_match and real_views == 0:
-                real_views = int(view_match.group(1))
+                try:
+                    real_views = int(view_match.group(1))
+                except Exception:
+                    pass
 
-            dur_match = re.search(r'"lengthSeconds"\s*:\s*"(\d+)"', html)
-            if dur_match:
-                total_secs = int(dur_match.group(1))
+            dur_matches = re.findall(r'"lengthSeconds"\s*:\s*"(\d+)"', html)
+            if not dur_matches:
+                dur_matches = re.findall(r'lengthSeconds["\s:]+(\d+)', html)
+            
+            if dur_matches:
+                total_secs = int(dur_matches[0])
                 m = total_secs // 60
                 s = total_secs % 60
                 duration_str = f"{m}:{s:02d}"
+            else:
+                alt_dur = re.search(r'"approxDurationMs"\s*:\s*"(\d+)"', html)
+                if alt_dur:
+                    total_secs = int(alt_dur.group(1)) // 1000
+                    m = total_secs // 60
+                    s = total_secs % 60
+                    duration_str = f"{m}:{s:02d}"
     except Exception:
         pass
         
@@ -254,7 +314,7 @@ def get_real_youtube_info(url):
 def is_valid_youtube_url(url):
     return bool(get_youtube_video_id(url))
 
-# Background Server Worker Thread with granular per-thread and per-view logging (Source: YouTube Shorts Feed)
+# Background Server Worker Thread with granular per-thread and per-view logging
 def run_background_worker(record_index, calc_index, analytics_index, desired_views, real_before_views, task_title, task_url, task_user):
     simulation_steps = 20
     step_increment = max(1, desired_views // simulation_steps)
@@ -336,7 +396,7 @@ if not st.session_state.logged_in:
             if user_email == ADMIN_EMAIL or user_email in approved_list:
                 st.session_state.logged_in = True
                 st.session_state.username = user_email
-                st.query_params["user"] = user_email  # Persist across page refreshes
+                st.query_params["user"] = user_email
                 log_activity(user_email, "Signed in successfully.")
                 st.rerun()
             else:
@@ -388,14 +448,14 @@ if st.session_state.username == ADMIN_EMAIL:
             st.sidebar.text(f"[{act['time']}] {act['username']}: {act['action']}")
 
 # Main Dashboard App
-st.title("🚀 Cloud YouTube Automation Bot (1,000 Views/Hour Limit)")
+st.title("🚀 Cloud YouTube Automation Bot (Admin: Unlimited | Users: 500 Views/Day)")
 st.write(f"Logged in as: **{st.session_state.username}**")
 
 if st.button("Logout"):
     log_activity(st.session_state.username, "Logged out of the system.")
     st.session_state.logged_in = False
     st.session_state.username = ""
-    st.query_params.clear()  # Clear persisted session token on explicit logout
+    st.query_params.clear()
     st.rerun()
 
 st.markdown("---")
@@ -425,7 +485,14 @@ else:
     tab_dash = st.tabs(["🚀 Automation Dashboard"])[0]
 
 with tab_dash:
-    st.info("ℹ️ **Strict Rate Limit Enabled:** Configured precisely to **1,000 views per hour** using 5 multi-threaded background workers. Runs even when browser is closed!")
+    is_admin = (st.session_state.username == ADMIN_EMAIL)
+    
+    if is_admin:
+        st.info("🛡️ **Admin Account Active:** You have **unlimited** daily view allocations and unrestricted task access.")
+    else:
+        views_used_today = get_user_daily_stats(st.session_state.username)
+        views_remaining = max(0, 500 - views_used_today)
+        st.info(f"ℹ️ **Daily Limit Active:** You have used **{views_used_today}/500** views today. Remaining allowance: **{views_remaining} views**.")
 
     st.subheader("Step 1: Enter & Submit YouTube Short URL")
     url_input = st.text_input("YouTube Short / Video URL:")
@@ -459,7 +526,7 @@ with tab_dash:
     if st.session_state.validated_url:
         yt_url = st.session_state.validated_url
         
-        with st.spinner("Fetching video details..."):
+        with st.spinner("Fetching accurate video metadata..."):
             video_title, real_before_views, video_duration = get_real_youtube_info(yt_url)
 
         st.markdown("---")
@@ -477,11 +544,24 @@ with tab_dash:
             st.markdown(f"⏱️ **Video Duration:** `{video_duration}`")
             st.markdown(f"👀 **Current Views:** `{real_before_views:,}`")
             st.markdown(f"🌐 **Traffic Source:** YouTube Shorts Feed (5 Multi-Threaded Server Workers)")
-            st.markdown(f"⚡ **Pacing Limit:** Exactly 1,000 views / hour limit enforcement")
+            if is_admin:
+                st.markdown(f"⚡ **Pacing Limit:** Unlimited (Admin Privilege)")
+            else:
+                st.markdown(f"⚡ **Pacing Limit:** 1,000 views / hour (Max 500 views per day)")
 
         st.markdown("---")
         st.subheader("Step 3: Select Desired Views")
-        desired_views = st.number_input("How many views do you want from Shorts feed?", min_value=50, max_value=50000, value=500, step=50)
+        
+        # Enforce max value limit selector for regular users based on remaining quota
+        if not is_admin:
+            current_used = get_user_daily_stats(st.session_state.username)
+            max_allowed = max(0, 500 - current_used)
+            if max_allowed == 0:
+                desired_views = st.number_input("How many views do you want from Shorts feed?", min_value=0, max_value=0, value=0, step=50)
+            else:
+                desired_views = st.number_input("How many views do you want from Shorts feed?", min_value=50, max_value=max_allowed, value=min(500, max_allowed), step=50)
+        else:
+            desired_views = st.number_input("How many views do you want from Shorts feed?", min_value=50, max_value=50000, value=500, step=50)
 
         total_minutes = int((desired_views / 1000) * 60)
         hours = total_minutes // 60
@@ -492,68 +572,88 @@ with tab_dash:
         current_pkt_time = datetime.now(pkt_zone)
         completion_time = current_pkt_time + timedelta(minutes=total_minutes)
 
-        st.markdown(f"**Estimated Total Duration (at 1k/hr rate):** {duration_str}")
+        st.markdown(f"**Estimated Total Duration:** {duration_str}")
         st.markdown(f"**Expected Completion Time (PKT):** {completion_time.strftime('%I:%M %p, %d %b %Y')}")
 
         st.markdown("---")
-        if st.button("Step 4: Launch True Background Cloud Bot Task"):
-            task_history_list = load_task_history()
-            history_record = {
-                "user": st.session_state.username,
-                "title": video_title,
-                "url": yt_url,
-                "before": real_before_views,
-                "target": desired_views,
-                "current": real_before_views,
-                "generated": 0,
-                "status": "Running (1k/hr) 🔄",
-                "time": current_pkt_time.strftime('%I:%M %p, %d %b')
-            }
-            task_history_list.append(history_record)
-            save_task_history(task_history_list)
-            record_index = len(task_history_list) - 1
+        
+        # Check daily quota before allowing task launch for non-admin users
+        can_launch = True
+        if not is_admin:
+            current_used_check = get_user_daily_stats(st.session_state.username)
+            if current_used_check >= 500 or desired_views <= 0:
+                can_launch = False
+                
+                # Calculate time until midnight PKT reset
+                tomorrow_pkt = (current_pkt_time + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+                time_to_reset = tomorrow_pkt - current_pkt_time
+                hours_left = int(time_to_reset.total_seconds() // 3600)
+                minutes_left = int((time_to_reset.total_seconds() % 3600) // 60)
+                
+                st.error(f"⏳ **Daily Quota Reached:** You have already used your 500 views limit for today. Your quota will update/reset in **{hours_left} hour(s) and {minutes_left} minute(s)** (at 12:00 AM PKT). Please come back tomorrow!")
 
-            calc_list = load_view_calculations()
-            calc_record = {
-                "user": st.session_state.username,
-                "title": video_title,
-                "url": yt_url,
-                "requested_views": desired_views,
-                "generated_views": 0,
-                "status": "In Progress 🔄",
-                "timestamp": current_pkt_time.strftime('%I:%M %p, %d %b %Y')
-            }
-            calc_list.append(calc_record)
-            save_view_calculations(calc_list)
-            calc_index = len(calc_list) - 1
+        if can_launch:
+            if st.button("Step 4: Launch True Background Cloud Bot Task"):
+                if not is_admin:
+                    add_user_daily_usage(st.session_state.username, desired_views)
 
-            admin_analytics = load_admin_thread_analytics()
-            analytics_record = {
-                "user": st.session_state.username,
-                "title": video_title,
-                "url": yt_url,
-                "target_views": desired_views,
-                "views_generated": 0,
-                "open_threads": 5,
-                "successful_threads": 0,
-                "failed_threads": 0,
-                "status": "Running 5 Threads 🔄",
-                "timestamp": current_pkt_time.strftime('%I:%M %p, %d %b %Y')
-            }
-            admin_analytics.append(analytics_record)
-            save_admin_thread_analytics(admin_analytics)
-            analytics_index = len(admin_analytics) - 1
+                task_history_list = load_task_history()
+                history_record = {
+                    "user": st.session_state.username,
+                    "title": video_title,
+                    "url": yt_url,
+                    "before": real_before_views,
+                    "target": desired_views,
+                    "current": real_before_views,
+                    "generated": 0,
+                    "status": "Running (1k/hr) 🔄",
+                    "time": current_pkt_time.strftime('%I:%M %p, %d %b')
+                }
+                task_history_list.append(history_record)
+                save_task_history(task_history_list)
+                record_index = len(task_history_list) - 1
 
-            log_activity(st.session_state.username, f"Launched background bot task (1k/hr limit): {desired_views} views for '{video_title}'")
-            
-            bg_thread = threading.Thread(
-                target=run_background_worker, 
-                args=(record_index, calc_index, analytics_index, desired_views, real_before_views, video_title, yt_url, st.session_state.username),
-                daemon=True
-            )
-            bg_thread.start()
+                calc_list = load_view_calculations()
+                calc_record = {
+                    "user": st.session_state.username,
+                    "title": video_title,
+                    "url": yt_url,
+                    "requested_views": desired_views,
+                    "generated_views": 0,
+                    "status": "In Progress 🔄",
+                    "timestamp": current_pkt_time.strftime('%I:%M %p, %d %b %Y')
+                }
+                calc_list.append(calc_record)
+                save_view_calculations(calc_list)
+                calc_index = len(calc_list) - 1
 
-            st.success("🚀 **Task Launched Successfully with 5 Threads Active!** Every single thread and view transaction is being logged. You can close this tab safely.")
+                admin_analytics = load_admin_thread_analytics()
+                analytics_record = {
+                    "user": st.session_state.username,
+                    "title": video_title,
+                    "url": yt_url,
+                    "target_views": desired_views,
+                    "views_generated": 0,
+                    "open_threads": 5,
+                    "successful_threads": 0,
+                    "failed_threads": 0,
+                    "status": "Running 5 Threads 🔄",
+                    "timestamp": current_pkt_time.strftime('%I:%M %p, %d %b %Y')
+                }
+                admin_analytics.append(analytics_record)
+                save_admin_thread_analytics(admin_analytics)
+                analytics_index = len(admin_analytics) - 1
+
+                log_activity(st.session_state.username, f"Launched background bot task: {desired_views} views for '{video_title}'")
+                
+                bg_thread = threading.Thread(
+                    target=run_background_worker, 
+                    args=(record_index, calc_index, analytics_index, desired_views, real_before_views, video_title, yt_url, st.session_state.username),
+                    daemon=True
+                )
+                bg_thread.start()
+
+                st.success("🚀 **Task Launched Successfully with 5 Threads Active!** Every single thread and view transaction is being logged. You can close this tab safely.")
 
 # Admin-Only History & View Calculation Panel
 if st.session_state.username == ADMIN_EMAIL:
