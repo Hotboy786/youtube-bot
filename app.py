@@ -398,34 +398,10 @@ if not st.session_state.logged_in:
             st.warning("Please enter a valid email address.")
     st.stop()
 
+# ==========================================
+# SIDEBAR: RECENT SYSTEM ACTIVITY LOGS ONLY
+# ==========================================
 if st.session_state.username == ADMIN_EMAIL:
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("## 🛡️ Admin Approval Panel")
-    st.sidebar.subheader("Pending Access Requests")
-    
-    current_pending = load_pending_requests()
-    approved_users = load_approved_users()
-
-    if len(current_pending) == 0:
-        st.sidebar.info("No pending requests.")
-    else:
-        for idx, email_req in enumerate(current_pending):
-            st.sidebar.text(email_req)
-            col1, col2 = st.sidebar.columns(2)
-            if col1.button("Approve", key=f"app_{idx}"):
-                if email_req not in approved_users:
-                    approved_users.append(email_req)
-                    save_approved_users(approved_users)
-                current_pending.pop(idx)
-                save_pending_requests(current_pending)
-                log_activity(ADMIN_EMAIL, f"Approved access for: {email_req}")
-                st.rerun()
-            if col2.button("Reject", key=f"rej_{idx}"):
-                current_pending.pop(idx)
-                save_pending_requests(current_pending)
-                log_activity(ADMIN_EMAIL, f"Rejected access for: {email_req}")
-                st.rerun()
-                
     st.sidebar.markdown("---")
     st.sidebar.subheader("📋 Recent System Activity Logs")
     all_activities_sidebar = load_activity_logs()
@@ -439,7 +415,7 @@ st.title("🚀 Cloud YouTube Automation Bot (Anti-Drop Human Mimicry)")
 st.write(f"Logged in as: **{st.session_state.username}**")
 
 if st.button("Logout"):
-    log_activity(st.session_state.username, "Logged out of the system.")
+    log_activity(st.session_state.username, "Logged logged out of the system.")
     st.session_state.logged_in = False
     st.session_state.username = ""
     st.query_params.clear()
@@ -721,6 +697,39 @@ if st.session_state.username == ADMIN_EMAIL:
 if st.session_state.username == ADMIN_EMAIL:
     with tab_granular_threads:
         st.subheader("⚙️ Granular Every-Single-Thread & Every-Single-View Log Panel")
+        
+        # ==========================================
+        # ADMIN APPROVAL PANEL PLACED NEAR GRANULAR LOGS
+        # ==========================================
+        with st.container():
+            st.markdown("---")
+            st.markdown("### 🛡️ Admin Approval Panel (Pending Requests Management)")
+            current_pending = load_pending_requests()
+            approved_users = load_approved_users()
+
+            if len(current_pending) == 0:
+                st.info("No pending user access requests at this time.")
+            else:
+                for idx, email_req in enumerate(current_pending):
+                    col_p1, col_p2, col_p3 = st.columns([2, 1, 1])
+                    col_p1.markdown(f"👤 **Pending Email:** `{email_req}`")
+                    if col_p2.button("Approve Access", key=f"app_granular_{idx}"):
+                        if email_req not in approved_users:
+                            approved_users.append(email_req)
+                            save_approved_users(approved_users)
+                        current_pending.pop(idx)
+                        save_pending_requests(current_pending)
+                        log_activity(ADMIN_EMAIL, f"Approved access for: {email_req}")
+                        st.success(f"Approved {email_req} successfully!")
+                        st.rerun()
+                    if col_p3.button("Reject Request", key=f"rej_granular_{idx}"):
+                        current_pending.pop(idx)
+                        save_pending_requests(current_pending)
+                        log_activity(ADMIN_EMAIL, f"Rejected access for: {email_req}")
+                        st.warning(f"Rejected {email_req}.")
+                        st.rerun()
+            st.markdown("---")
+
         detailed_logs = load_detailed_thread_logs()
         if len(detailed_logs) == 0:
             st.warning("No granular thread and view logs captured yet.")
