@@ -275,7 +275,7 @@ def is_valid_youtube_url(url):
 
 def run_real_youtube_automation(target_url, desired_views, record_index, calc_index, analytics_index, real_before_views, task_title, task_user, play_duration_secs):
     pkt_zone = timezone(timedelta(hours=5))
-    active_threads_count = 3  
+    active_threads_count = 10  # Updated to 10 concurrent smaller tabs/workers loop
     views_completed = 0
 
     # Diverse mobile user agents and resolutions for human fingerprint mimicking
@@ -300,6 +300,9 @@ def run_real_youtube_automation(target_url, desired_views, record_index, calc_in
             # Headless=True with stealth args or headless=False for local debugging
             browser = p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-blink-features=AutomationControlled"])
             
+            successful_workers = 0
+            failed_workers = 0
+
             while views_completed < desired_views:
                 batch_size = min(active_threads_count, desired_views - views_completed)
                 
@@ -324,11 +327,16 @@ def run_real_youtube_automation(target_url, desired_views, record_index, calc_in
                         page.goto(target_url, timeout=30000)
                         page.wait_for_selector("video", timeout=10000)
                         
+                        # Ensure video is muted via JS to allow smooth background execution
+                        try:
+                            page.evaluate("document.querySelectorAll('video').forEach(v => v.muted = true);")
+                        except Exception:
+                            pass
+                        
                         # Simulate human jitter: random mouse/touch move
                         try:
                             page.mouse.move(random.randint(50, 300), random.randint(100, 500))
                             time.sleep(random.uniform(0.3, 0.9))
-                            # Simulate gentle swipe/scroll behavior common on shorts
                             page.mouse.wheel(0, random.randint(20, 80))
                         except Exception:
                             pass
@@ -340,6 +348,7 @@ def run_real_youtube_automation(target_url, desired_views, record_index, calc_in
                         context.close()
                         
                         views_completed += 1
+                        successful_workers += 1
                         
                         detailed_logs = load_detailed_thread_logs()
                         thread_log_entry = {
@@ -352,13 +361,13 @@ def run_real_youtube_automation(target_url, desired_views, record_index, calc_in
                             "view_status": "Generated & Filter-Protected ✅",
                             "traffic_source": "YouTube Shorts Feed (Human-Mimic Browser)",
                             "real_time_views_added": views_completed,
-                            "details": f"Simulated human session for {jittered_duration:.1f}s with randomized UA/Viewport. View recorded."
+                            "details": f"Simulated human session (Muted & 10-tab loop) for {jittered_duration:.1f}s with randomized UA/Viewport."
                         }
                         detailed_logs.append(thread_log_entry)
                         save_detailed_thread_logs(detailed_logs)
 
                     except Exception:
-                        pass
+                        failed_workers += 1
 
                     tasks = load_task_history()
                     if len(tasks) > record_index:
@@ -378,6 +387,8 @@ def run_real_youtube_automation(target_url, desired_views, record_index, calc_in
                     analytics_list = load_admin_thread_analytics()
                     if len(analytics_list) > analytics_index:
                         analytics_list[analytics_index]["views_generated"] = views_completed
+                        analytics_list[analytics_index]["successful_threads"] = successful_workers
+                        analytics_list[analytics_index]["failed_threads"] = failed_workers
                         analytics_list[analytics_index]["status"] = "Completed ✅" if views_completed >= desired_views else "Running Workers 🔄"
                         save_admin_thread_analytics(analytics_list)
 
@@ -528,7 +539,7 @@ with tab_dash:
         with col2:
             st.markdown(f"### 🎬 {video_title}")
             st.markdown(f"⏱️ **Original Video Length:** `{video_duration}` (`{total_secs} seconds`)")
-            st.markdown(f"⏱️ **Target Watch Duration:** Randomized human session profile (~`{play_duration:.1f}s`)")
+            st.markdown(f"⏱️ **Target Watch Duration:** Randomized human session profile (~`{play_duration:.1f}s`) [Muted & 10-Tab Loop]")
             st.markdown(f"👀 **Current Views:** `{real_before_views:,}`")
             st.markdown(f"🌐 **Traffic Source:** YouTube Shorts Feed (Anti-Drop Fingerprint Randomizer)")
 
@@ -573,7 +584,7 @@ with tab_dash:
                 st.error(f"⏳ **Daily Quota Reached:** Limit of 500 views reached. Resets in **{hours_left}h {minutes_left}m**.")
 
         if can_launch:
-            if st.button("Step 4: Launch Human-Mimic Cloud Bot Task"):
+            if st.button("Step 4: Launch Human-Mimic Cloud Bot Task (10-Tab Loop)"):
                 if not is_admin:
                     add_user_daily_usage(st.session_state.username, desired_views)
 
@@ -614,17 +625,17 @@ with tab_dash:
                     "url": yt_url,
                     "target_views": desired_views,
                     "views_generated": 0,
-                    "open_threads": 3,
+                    "open_threads": 10,
                     "successful_threads": 0,
                     "failed_threads": 0,
-                    "status": "Running Human-Mimic Workers 🔄",
+                    "status": "Running Human-Mimic Workers (10-Tab Loop) 🔄",
                     "timestamp": current_pkt_time.strftime('%I:%M %p, %d %b %Y')
                 }
                 admin_analytics.append(analytics_record)
                 save_admin_thread_analytics(admin_analytics)
                 analytics_index = len(admin_analytics) - 1
 
-                log_activity(st.session_state.username, f"Launched human-mimic task: {desired_views} views for '{video_title}'")
+                log_activity(st.session_state.username, f"Launched human-mimic task: {desired_views} views for '{video_title}' (10-tab loop)")
                 
                 bg_thread = threading.Thread(
                     target=run_real_youtube_automation, 
@@ -633,7 +644,7 @@ with tab_dash:
                 )
                 bg_thread.start()
 
-                st.success("🚀 **Task Launched with Anti-Drop Human Mimicry!** Browsers are now rotating user agents, viewports, and injecting human mouse/scroll behavior.")
+                st.success("🚀 **Task Launched with 10-Tab Muted Loop & Human Mimicry!** Browsers are rotating user agents, viewports, and running muted playback.")
 
 # Admin Tabs for Analytics and Monitoring
 if st.session_state.username == ADMIN_EMAIL:
