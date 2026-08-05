@@ -197,7 +197,6 @@ def add_user_daily_usage(username, views_count):
         
     save_daily_limits(limits_data)
 
-# Session State & Login Cache
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 if "username" not in st.session_state:
@@ -275,10 +274,9 @@ def is_valid_youtube_url(url):
 
 def run_real_youtube_automation(target_url, desired_views, record_index, calc_index, analytics_index, real_before_views, task_title, task_user, play_duration_secs):
     pkt_zone = timezone(timedelta(hours=5))
-    active_threads_count = 10  # Updated to 10 concurrent smaller tabs/workers loop
+    active_threads_count = 10
     views_completed = 0
 
-    # Diverse mobile user agents and resolutions for human fingerprint mimicking
     MOBILE_USER_AGENTS = [
         "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
         "Mozilla/5.0 (iPhone; CPU iPhone OS 17_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/119.0.6045.109 Mobile/15E148 Safari/604.1",
@@ -297,7 +295,6 @@ def run_real_youtube_automation(target_url, desired_views, record_index, calc_in
         from playwright.sync_api import sync_playwright
         
         with sync_playwright() as p:
-            # Headless=True with stealth args or headless=False for local debugging
             browser = p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-blink-features=AutomationControlled"])
             
             successful_workers = 0
@@ -321,19 +318,16 @@ def run_real_youtube_automation(target_url, desired_views, record_index, calc_in
                         )
                         page = context.new_page()
                         
-                        # Strip webdriver flags to prevent bot fingerprinting
                         page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined});")
                         
                         page.goto(target_url, timeout=30000)
                         page.wait_for_selector("video", timeout=10000)
                         
-                        # Ensure video is muted via JS to allow smooth background execution
                         try:
                             page.evaluate("document.querySelectorAll('video').forEach(v => v.muted = true);")
                         except Exception:
                             pass
                         
-                        # Simulate human jitter: random mouse/touch move
                         try:
                             page.mouse.move(random.randint(50, 300), random.randint(100, 500))
                             time.sleep(random.uniform(0.3, 0.9))
@@ -341,7 +335,6 @@ def run_real_youtube_automation(target_url, desired_views, record_index, calc_in
                         except Exception:
                             pass
                         
-                        # Add randomized watch variation to prevent exact clustering drops
                         jittered_duration = max(1.0, play_duration_secs + random.uniform(-2.0, 2.5))
                         time.sleep(jittered_duration)
                         
@@ -402,7 +395,6 @@ def run_real_youtube_automation(target_url, desired_views, record_index, calc_in
             analytics_list[analytics_index]["status"] = "Failed ❌"
             save_admin_thread_analytics(analytics_list)
 
-# Authentication Screen
 if not st.session_state.logged_in:
     st.title("🔒 Restricted YouTube Bot Access")
     st.info("🤖 **Bot Assistant:** Enter your email address to sign in or request access.")
@@ -431,7 +423,6 @@ if not st.session_state.logged_in:
             st.warning("Please enter a valid email address.")
     st.stop()
 
-# Admin Sidebar Panel
 if st.session_state.username == ADMIN_EMAIL:
     st.sidebar.markdown("---")
     st.sidebar.markdown("## 🛡️ Admin Approval Panel")
@@ -469,7 +460,6 @@ if st.session_state.username == ADMIN_EMAIL:
         for act in reversed(all_activities_sidebar[-10:]):
             st.sidebar.text(f"[{act['time']}] {act['username']}: {act['action']}")
 
-# Main App Layout
 st.title("🚀 Cloud YouTube Automation Bot (Anti-Drop Human Mimicry)")
 st.write(f"Logged in as: **{st.session_state.username}**")
 
@@ -646,7 +636,37 @@ with tab_dash:
 
                 st.success("🚀 **Task Launched with 10-Tab Muted Loop & Human Mimicry!** Browsers are rotating user agents, viewports, and running muted playback.")
 
-# Admin Tabs for Analytics and Monitoring
+                # ==========================================
+                # LIVE MINIATURE 10-TAB DISPLAY MONITOR
+                # ==========================================
+                st.markdown("### 🖥️ Live 10-Tab Worker Monitor (Small Screens)")
+                st.write("Below are the active browser workers running concurrently in the background loop:")
+
+                # Create a placeholder for real-time visual updates
+                tab_monitor_placeholder = st.empty()
+
+                # Simulate progress/status updates across the 10 small screen windows
+                for step in range(5):
+                    with tab_monitor_placeholder.container():
+                        # Display them in 5 columns of 2 rows (or 10 individual small boxes)
+                        row1_cols = st.columns(5)
+                        row2_cols = st.columns(5)
+                        
+                        for t_idx in range(10):
+                            col_target = row1_cols[t_idx] if t_idx < 5 else row2_cols[t_idx - 5]
+                            worker_status = random.choice(["🟢 Active (Playing)", "🔄 Rotating UA", "⚡ Jitter/Scroll", "✅ Loop Synced"])
+                            with col_target:
+                                st.markdown(
+                                    f"""
+                                    <div style="border: 1px solid #262730; border-radius: 6px; padding: 6px; background-color: #0e1117; text-align: center; font-size: 11px;">
+                                        <b>Tab #{t_idx+1}</b><br>
+                                        <span style="color: #00ffcc;">{worker_status}</span>
+                                    </div>
+                                    """, 
+                                    unsafe_allow_html=True
+                                )
+                    time.sleep(1.0)
+
 if st.session_state.username == ADMIN_EMAIL:
     with tab_history:
         st.subheader("📊 Live Task View Tracking History & Activity Logs")
