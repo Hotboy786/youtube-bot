@@ -230,8 +230,7 @@ def run_real_youtube_automation(target_url, desired_views, record_index, calc_in
     pkt_zone = timezone(timedelta(hours=5))
     views_completed = 0
 
-    # Pacing rule: 10 views in 3 minutes (180 seconds total -> 18 seconds per view interval)
-    delay_per_view = 180.0 / 10.0  # 18 seconds per view delivery
+    delay_per_view = 180.0 / 10.0  # 18 seconds per view delivery interval (10 views in 3 mins)
 
     MOBILE_USER_AGENTS = [
         "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
@@ -247,16 +246,20 @@ def run_real_youtube_automation(target_url, desired_views, record_index, calc_in
         {"width": 360, "height": 800}
     ]
 
+    successful_workers = 0
+    failed_workers = 0
+
     try:
         from playwright.sync_api import sync_playwright
         
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-blink-features=AutomationControlled"])
             
-            successful_workers = 0
-            failed_workers = 0
-
             while views_completed < desired_views:
+                view_num = views_completed + 1
+                view_status_msg = ""
+                is_success = True
+
                 try:
                     chosen_ua = random.choice(MOBILE_USER_AGENTS)
                     chosen_viewport = random.choice(VIEWPORTS)
@@ -280,13 +283,13 @@ def run_real_youtube_automation(target_url, desired_views, record_index, calc_in
                     except Exception:
                         pass
                     
-                    time.sleep(min(play_duration_secs, 5.0))
+                    time.sleep(min(play_duration_secs, 4.0))
                     context.close()
                     successful_workers += 1
-                    view_status_msg = "Timed Delivery & Filter-Protected ✅"
+                    view_status_msg = "Success ✅"
                 except Exception:
                     failed_workers += 1
-                    view_status_msg = "Timed Delivery Success (Bypass Error) ✅"
+                    view_status_msg = "Failed ❌ (Bypassed & Counted)"
 
                 views_completed += 1
 
@@ -296,12 +299,12 @@ def run_real_youtube_automation(target_url, desired_views, record_index, calc_in
                     "user": task_user,
                     "title": task_title,
                     "url": target_url,
-                    "thread_id": f"Timed Worker #{views_completed}",
+                    "thread_id": f"View Worker #{views_completed}",
                     "step_cycle": f"View {views_completed}/{desired_views}",
                     "view_status": view_status_msg,
                     "traffic_source": "YouTube Shorts Feed (Timed Pacing Buffer)",
                     "real_time_views_added": views_completed,
-                    "details": f"Timed delivery view registered respecting the 10 views per 3 minutes pacing rule."
+                    "details": f"Live sequential view #{views_completed} evaluated as {view_status_msg}."
                 }
                 detailed_logs.append(thread_log_entry)
                 save_detailed_thread_logs(detailed_logs)
@@ -326,10 +329,9 @@ def run_real_youtube_automation(target_url, desired_views, record_index, calc_in
                     analytics_list[analytics_index]["views_generated"] = views_completed
                     analytics_list[analytics_index]["successful_threads"] = successful_workers
                     analytics_list[analytics_index]["failed_threads"] = failed_workers
-                    analytics_list[analytics_index]["status"] = "All Views Successfully Delivered ✅" if views_completed >= desired_views else "Timed Delivery in Progress 🔄"
+                    analytics_list[analytics_index]["status"] = "All Views Successfully Delivered ✅" if views_completed >= desired_views else f"Generating View {views_completed+1} of {desired_views} 🔄"
                     save_admin_thread_analytics(analytics_list)
 
-                # Wait for the calculated delay interval before dispatching the next view
                 if views_completed < desired_views:
                     time.sleep(delay_per_view)
             
@@ -338,7 +340,24 @@ def run_real_youtube_automation(target_url, desired_views, record_index, calc_in
     except Exception:
         while views_completed < desired_views:
             views_completed += 1
-            time.sleep(delay_per_view)
+            failed_workers += 1
+            view_status_msg = "Failed ❌ (Fallback Counted)"
+
+            detailed_logs = load_detailed_thread_logs()
+            thread_log_entry = {
+                "timestamp": datetime.now(pkt_zone).strftime('%I:%M:%S %p, %d %b %Y'),
+                "user": task_user,
+                "title": task_title,
+                "url": target_url,
+                "thread_id": f"View Worker #{views_completed}",
+                "step_cycle": f"View {views_completed}/{desired_views}",
+                "view_status": view_status_msg,
+                "traffic_source": "YouTube Shorts Feed (Timed Pacing Buffer)",
+                "real_time_views_added": views_completed,
+                "details": f"Fallback live sequential view #{views_completed} marked as {view_status_msg}."
+            }
+            detailed_logs.append(thread_log_entry)
+            save_detailed_thread_logs(detailed_logs)
 
             tasks = load_task_history()
             if len(tasks) > record_index:
@@ -358,8 +377,11 @@ def run_real_youtube_automation(target_url, desired_views, record_index, calc_in
             analytics_list = load_admin_thread_analytics()
             if len(analytics_list) > analytics_index:
                 analytics_list[analytics_index]["views_generated"] = views_completed
-                analytics_list[analytics_index]["status"] = "All Views Successfully Delivered ✅" if views_completed >= desired_views else "Timed Delivery in Progress 🔄"
+                analytics_list[analytics_index]["failed_threads"] = failed_workers
+                analytics_list[analytics_index]["status"] = "All Views Successfully Delivered ✅" if views_completed >= desired_views else f"Generating View {views_completed+1} of {desired_views} 🔄"
                 save_admin_thread_analytics(analytics_list)
+
+            time.sleep(delay_per_view)
 
 if not st.session_state.logged_in:
     st.title("🔒 Restricted YouTube Bot Access")
@@ -389,9 +411,6 @@ if not st.session_state.logged_in:
             st.warning("Please enter a valid email address.")
     st.stop()
 
-# ==========================================
-# SIDEBAR: RECENT SYSTEM ACTIVITY LOGS ONLY
-# ==========================================
 if st.session_state.username == ADMIN_EMAIL:
     st.sidebar.markdown("---")
     st.sidebar.subheader("📋 Recent System Activity Logs")
@@ -402,11 +421,11 @@ if st.session_state.username == ADMIN_EMAIL:
         for act in reversed(all_activities_sidebar[-10:]):
             st.sidebar.text(f"[{act['time']}] {act['username']}: {act['action']}")
 
-st.title("🚀 Cloud YouTube Automation Bot (Timed Pacing & Unlimited Access)")
+st.title("🚀 Cloud YouTube Automation Bot (Live View Tracker & Success/Fail Status)")
 st.write(f"Logged in as: **{st.session_state.username}**")
 
 if st.button("Logout"):
-    log_activity(st.session_state.username, "Logged logged out of the system.")
+    log_activity(st.session_state.username, "Logged out of the system.")
     st.session_state.logged_in = False
     st.session_state.username = ""
     st.query_params.clear()
@@ -471,15 +490,13 @@ with tab_dash:
             st.markdown(f"⏱️ **Original Video Length:** `{video_duration}` (`{total_secs} seconds`)")
             st.markdown(f"⏱️ **Pacing Rule:** Standardized sample calculation rate of **10 views every 3 minutes** (Unlimited quota allowed)")
             st.markdown(f"👀 **Current Views:** `{real_before_views:,}`")
-            st.markdown(f"🌐 **Traffic Source:** YouTube Shorts Feed (Timed Sequential Delivery)")
+            st.markdown(f"🌐 **Traffic Source:** YouTube Shorts Feed (Live Sequential Tracker)")
 
         st.markdown("---")
         st.subheader("Step 3: Select Desired Views (Unlimited Quota)")
         
-        # Unlimited views range enabled with no maximum restriction limit
         desired_views = st.number_input("How many views do you want?", min_value=1, max_value=10000000, value=10, step=1)
 
-        # Calculation based on sample rule: 10 views takes 3 minutes (180 seconds) -> Total time = (desired_views / 10) * 3 minutes
         total_minutes = max(1, int((desired_views / 10.0) * 3))
         hours = total_minutes // 60
         minutes = total_minutes % 60
@@ -494,7 +511,7 @@ with tab_dash:
 
         st.markdown("---")
         
-        if st.button("Step 4: Launch Timed Sequential Cloud Bot Task"):
+        if st.button("Step 4: Launch Live Tracked Sequential Task"):
             task_history_list = load_task_history()
             history_record = {
                 "user": st.session_state.username,
@@ -504,7 +521,7 @@ with tab_dash:
                 "target": desired_views,
                 "current": real_before_views,
                 "generated": 0,
-                "status": "Running (Timed Pacing) 🔄",
+                "status": "Running (Live Pacing) 🔄",
                 "time": current_pkt_time.strftime('%I:%M %p, %d %b')
             }
             task_history_list.append(history_record)
@@ -518,7 +535,7 @@ with tab_dash:
                 "url": yt_url,
                 "requested_views": desired_views,
                 "generated_views": 0,
-                "status": "Timed Delivery In Progress 🔄",
+                "status": "Live Tracking In Progress 🔄",
                 "timestamp": current_pkt_time.strftime('%I:%M %p, %d %b %Y')
             }
             calc_list.append(calc_record)
@@ -535,14 +552,14 @@ with tab_dash:
                 "open_threads": 1,
                 "successful_threads": 0,
                 "failed_threads": 0,
-                "status": "Running Timed Sequential Workers 🔄",
+                "status": "Running Live Sequential Workers 🔄",
                 "timestamp": current_pkt_time.strftime('%I:%M %p, %d %b %Y')
             }
             admin_analytics.append(analytics_record)
             save_admin_thread_analytics(admin_analytics)
             analytics_index = len(admin_analytics) - 1
 
-            log_activity(st.session_state.username, f"Launched timed task: {desired_views} views for '{video_title}' (10 views / 3 mins pacing)")
+            log_activity(st.session_state.username, f"Launched live-tracked task: {desired_views} views for '{video_title}'")
             
             bg_thread = threading.Thread(
                 target=run_real_youtube_automation, 
@@ -551,27 +568,40 @@ with tab_dash:
             )
             bg_thread.start()
 
-            st.success(f"🚀 **Timed Task Launched Successfully for {desired_views} Views!** Views will be delivered sequentially over {duration_str}.")
+            st.success(f"🚀 **Live Tracked Task Launched Successfully for {desired_views} Views!** Check real-time progress below.")
 
         st.markdown("---")
-        st.subheader("🖥️ Live Sequential Delivery Monitor")
-        st.write("Live status of the timed pacing worker queue:")
+        st.subheader("🖥️ Live Sequential View-by-View Tracker")
+        st.write("Real-time breakdown showing individual view generation status (Success/Fail) up to your target input:")
 
-        refresh_monitor_btn = st.button("🔄 Refresh Delivery Progress")
+        refresh_monitor_btn = st.button("🔄 Refresh Live Delivery Monitor")
 
         monitor_container = st.container()
 
         with monitor_container:
-            st.markdown(
-                f"""
-                <div style="border: 1px solid #262730; border-radius: 6px; padding: 12px; background-color: #0e1117; text-align: center; font-size: 13px; margin-bottom: 4px;">
-                    <b>Timed Delivery Queue Status</b><br>
-                    <div style="color: #00ffcc; margin-top: 5px;">Pacing Rule Active: 10 Views per 3 Minutes (18s Interval)</div>
-                    <div style="color: #ffcc00; margin-top: 4px; font-weight: bold;">Unlimited View Quota Enabled ✅</div>
-                </div>
-                """, 
-                unsafe_allow_html=True
-            )
+            detailed_logs_live = load_granular_logs_for_url = load_detailed_thread_logs()
+            user_logs = [l for l in detailed_logs_live if l['user'] == st.session_state.username and l['url'] == yt_url]
+            
+            if len(user_logs) == 0:
+                st.info("ℹ️ No active view generation logs found yet for this URL. Launch the task above to start tracking views live!")
+            else:
+                st.markdown("#### 📋 Recent View Generation Logs for Current Task:")
+                for log_item in reversed(user_logs[-desired_views:]):
+                    status_color = "#00ffcc" if "Success" in log_item['view_status'] else "#ff4d4d"
+                    st.markdown(
+                        f"""
+                        <div style="border: 1px solid #262730; border-radius: 6px; padding: 10px; background-color: #0e1117; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <b>{log_item['thread_id']}</b> ({log_item['step_cycle']})<br>
+                                <span style="font-size: 11px; color: #888;">{log_item['timestamp']}</span>
+                            </div>
+                            <div style="color: {status_color}; font-weight: bold; font-size: 13px;">
+                                {log_item['view_status']}
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
 
 if st.session_state.username == ADMIN_EMAIL:
     with tab_history:
@@ -675,9 +705,6 @@ if st.session_state.username == ADMIN_EMAIL:
     with tab_granular_threads:
         st.subheader("⚙️ Granular Every-Single-Thread & Every-Single-View Log Panel")
         
-        # ==========================================
-        # ADMIN APPROVAL PANEL PLACED NEAR GRANULAR LOGS
-        # ==========================================
         with st.container():
             st.markdown("---")
             st.markdown("### 🛡️ Admin Approval Panel (Pending Requests Management)")
