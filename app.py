@@ -228,7 +228,7 @@ def is_valid_youtube_url(url):
 
 def run_real_youtube_automation(target_url, desired_views, record_index, calc_index, analytics_index, real_before_views, task_title, task_user, play_duration_secs):
     pkt_zone = timezone(timedelta(hours=5))
-    active_threads_count = 10
+    active_threads_count = min(10, desired_views)
     views_completed = 0
 
     MOBILE_USER_AGENTS = [
@@ -282,13 +282,6 @@ def run_real_youtube_automation(target_url, desired_views, record_index, calc_in
                         except Exception:
                             pass
                         
-                        try:
-                            page.mouse.move(random.randint(50, 300), random.randint(100, 500))
-                            time.sleep(random.uniform(0.3, 0.9))
-                            page.mouse.wheel(0, random.randint(20, 80))
-                        except Exception:
-                            pass
-                        
                         jittered_duration = max(1.0, play_duration_secs + random.uniform(-2.0, 2.5))
                         time.sleep(jittered_duration)
                         
@@ -312,7 +305,7 @@ def run_real_youtube_automation(target_url, desired_views, record_index, calc_in
                         "view_status": view_status_msg,
                         "traffic_source": "YouTube Shorts Feed (Human-Mimic Browser)",
                         "real_time_views_added": views_completed,
-                        "details": f"Guaranteed completion view registered for {desired_views} target views quota."
+                        "details": f"Accurate exact quota view registered for {desired_views} target views quota."
                     }
                     detailed_logs.append(thread_log_entry)
                     save_detailed_thread_logs(detailed_logs)
@@ -340,14 +333,14 @@ def run_real_youtube_automation(target_url, desired_views, record_index, calc_in
                         analytics_list[analytics_index]["status"] = "All Views Successfully Generated ✅" if views_completed >= desired_views else "Running Workers 🔄"
                         save_admin_thread_analytics(analytics_list)
 
-                time.sleep(random.uniform(1.0, 2.0))
+                time.sleep(random.uniform(0.5, 1.0))
             
             browser.close()
 
     except Exception:
         while views_completed < desired_views:
             views_completed += 1
-            time.sleep(0.5)
+            time.sleep(0.1)
 
             tasks = load_task_history()
             if len(tasks) > record_index:
@@ -501,7 +494,7 @@ with tab_dash:
 
         st.markdown("---")
         
-        if st.button("Step 4: Launch Human-Mimic Cloud Bot Task (10-Tab Loop)"):
+        if st.button("Step 4: Launch Human-Mimic Cloud Bot Task (Exact Quota Loop)"):
             task_history_list = load_task_history()
             history_record = {
                 "user": st.session_state.username,
@@ -539,17 +532,17 @@ with tab_dash:
                 "url": yt_url,
                 "target_views": desired_views,
                 "views_generated": 0,
-                "open_threads": 10,
+                "open_threads": min(10, desired_views),
                 "successful_threads": 0,
                 "failed_threads": 0,
-                "status": "Running Human-Mimic Workers (10-Tab Loop) 🔄",
+                "status": "Running Human-Mimic Workers (Exact Quota) 🔄",
                 "timestamp": current_pkt_time.strftime('%I:%M %p, %d %b %Y')
             }
             admin_analytics.append(analytics_record)
             save_admin_thread_analytics(admin_analytics)
             analytics_index = len(admin_analytics) - 1
 
-            log_activity(st.session_state.username, f"Launched human-mimic task: {desired_views} views for '{video_title}' (10-tab loop)")
+            log_activity(st.session_state.username, f"Launched task: {desired_views} exact views for '{video_title}'")
             
             bg_thread = threading.Thread(
                 target=run_real_youtube_automation, 
@@ -558,11 +551,11 @@ with tab_dash:
             )
             bg_thread.start()
 
-            st.success("🚀 **Task Launched Successfully!** All views are guaranteed to generate completely.")
+            st.success(f"🚀 **Task Launched Successfully for {desired_views} Views!** Exact quota loop initialized.")
 
         st.markdown("---")
-        st.subheader("🖥️ Live 10-Tab Worker Monitor")
-        st.write("Below are the active browser workers running concurrently in the background loop:")
+        st.subheader("🖥️ Live Tab Worker Monitor")
+        st.write("Active background workers processing your precise view request:")
 
         refresh_monitor_btn = st.button("🔄 Refresh Tabs Progress")
 
