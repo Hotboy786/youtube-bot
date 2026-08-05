@@ -20,7 +20,6 @@ TASKS_FILE = "task_history.json"
 VIEW_CALC_FILE = "view_calculations.json"
 ADMIN_THREAD_ANALYTICS_FILE = "admin_thread_analytics.json"
 DETAILED_THREAD_LOGS_FILE = "detailed_thread_logs.json"
-DAILY_LIMITS_FILE = "daily_user_limits.json"
 
 def load_approved_users():
     default_users = [ADMIN_EMAIL]
@@ -151,51 +150,6 @@ def save_detailed_thread_logs(logs_list):
             json.dump(logs_list, f)
     except Exception:
         pass
-
-def load_daily_limits():
-    if os.path.exists(DAILY_LIMITS_FILE):
-        try:
-            with open(DAILY_LIMITS_FILE, "r") as f:
-                return json.load(f)
-        except Exception:
-            return {}
-    return {}
-
-def save_daily_limits(limits_dict):
-    try:
-        with open(DAILY_LIMITS_FILE, "w") as f:
-            json.dump(limits_dict, f)
-    except Exception:
-        pass
-
-def get_user_daily_stats(username):
-    pkt_zone = timezone(timedelta(hours=5))
-    today_str = datetime.now(pkt_zone).strftime('%Y-%m-%d')
-    
-    limits_data = load_daily_limits()
-    if username not in limits_data or limits_data[username].get("date") != today_str:
-        limits_data[username] = {
-            "date": today_str,
-            "views_used": 0
-        }
-        save_daily_limits(limits_data)
-        
-    return limits_data[username]["views_used"]
-
-def add_user_daily_usage(username, views_count):
-    pkt_zone = timezone(timedelta(hours=5))
-    today_str = datetime.now(pkt_zone).strftime('%Y-%m-%d')
-    
-    limits_data = load_daily_limits()
-    if username not in limits_data or limits_data[username].get("date") != today_str:
-        limits_data[username] = {
-            "date": today_str,
-            "views_used": views_count
-        }
-    else:
-        limits_data[username]["views_used"] += views_count
-        
-    save_daily_limits(limits_data)
 
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
@@ -487,11 +441,9 @@ with tab_dash:
     is_admin = (st.session_state.username == ADMIN_EMAIL)
     
     if is_admin:
-        st.info("🛡️ **Admin Account Active:** You have **unlimited** daily view allocations and unrestricted task access.")
+        st.info("🛡️ **Admin Account Active:** Unrestricted access enabled.")
     else:
-        views_used_today = get_user_daily_stats(st.session_state.username)
-        views_remaining = max(0, 500 - views_used_today)
-        st.info(f"ℹ️ **Daily Limit Active:** You have used **{views_used_today}/500** views today. Remaining allowance: **{views_remaining} views**.")
+        st.info("ℹ️ **Account Active:** Unrestricted view allocations enabled.")
 
     st.subheader("Step 1: Enter & Submit YouTube Short URL")
     url_input = st.text_input("YouTube Short / Video URL:")
@@ -536,15 +488,7 @@ with tab_dash:
         st.markdown("---")
         st.subheader("Step 3: Select Desired Views")
         
-        if not is_admin:
-            current_used = get_user_daily_stats(st.session_state.username)
-            max_allowed = max(0, 500 - current_used)
-            if max_allowed == 0:
-                desired_views = st.number_input("How many views do you want?", min_value=0, max_value=0, value=0, step=50)
-            else:
-                desired_views = st.number_input("How many views do you want?", min_value=50, max_value=max_allowed, value=min(500, max_allowed), step=50)
-        else:
-            desired_views = st.number_input("How many views do you want?", min_value=50, max_value=50000, value=500, step=50)
+        desired_views = st.number_input("How many views do you want?", min_value=50, max_value=50000, value=500, step=50)
 
         total_minutes = int((desired_views / 1000) * 60)
         hours = total_minutes // 60
@@ -560,112 +504,106 @@ with tab_dash:
 
         st.markdown("---")
         
-        can_launch = True
-        if not is_admin:
-            current_used_check = get_user_daily_stats(st.session_state.username)
-            if current_used_check >= 500 or desired_views <= 0:
-                can_launch = False
+        if st.button("Step 4: Launch Human-Mimic Cloud Bot Task (10-Tab Loop)"):
+            task_history_list = load_task_history()
+            history_record = {
+                "user": st.session_state.username,
+                "title": video_title,
+                "url": yt_url,
+                "before": real_before_views,
+                "target": desired_views,
+                "current": real_before_views,
+                "generated": 0,
+                "status": "Running (Human-Mimic) 🔄",
+                "time": current_pkt_time.strftime('%I:%M %p, %d %b')
+            }
+            task_history_list.append(history_record)
+            save_task_history(task_history_list)
+            record_index = len(task_history_list) - 1
+
+            calc_list = load_view_calculations()
+            calc_record = {
+                "user": st.session_state.username,
+                "title": video_title,
+                "url": yt_url,
+                "requested_views": desired_views,
+                "generated_views": 0,
+                "status": "In Progress 🔄",
+                "timestamp": current_pkt_time.strftime('%I:%M %p, %d %b %Y')
+            }
+            calc_list.append(calc_record)
+            save_view_calculations(calc_list)
+            calc_index = len(calc_list) - 1
+
+            admin_analytics = load_admin_thread_analytics()
+            analytics_record = {
+                "user": st.session_state.username,
+                "title": video_title,
+                "url": yt_url,
+                "target_views": desired_views,
+                "views_generated": 0,
+                "open_threads": 10,
+                "successful_threads": 0,
+                "failed_threads": 0,
+                "status": "Running Human-Mimic Workers (10-Tab Loop) 🔄",
+                "timestamp": current_pkt_time.strftime('%I:%M %p, %d %b %Y')
+            }
+            admin_analytics.append(analytics_record)
+            save_admin_thread_analytics(admin_analytics)
+            analytics_index = len(admin_analytics) - 1
+
+            log_activity(st.session_state.username, f"Launched human-mimic task: {desired_views} views for '{video_title}' (10-tab loop)")
+            
+            bg_thread = threading.Thread(
+                target=run_real_youtube_automation, 
+                args=(yt_url, desired_views, record_index, calc_index, analytics_index, real_before_views, video_title, st.session_state.username, play_duration),
+                daemon=True
+            )
+            bg_thread.start()
+
+            st.success("🚀 **Task Launched with 10-Tab Muted Loop & Human Mimicry!** Browsers are rotating user agents, viewports, and running muted playback.")
+
+        # ==========================================
+        # MANUAL REFRESH BUTTON FOR 10-TAB WORKER MONITOR
+        # ==========================================
+        st.markdown("---")
+        st.subheader("🖥️ Live 10-Tab Worker Monitor")
+        st.write("Below are the active browser workers running concurrently in the background loop:")
+
+        # Manual refresh button (renders only this section without reloading the whole page/app)
+        refresh_monitor_btn = st.button("🔄 Refresh Tabs Progress")
+
+        # Container to isolate the tab monitor rendering
+        monitor_container = st.container()
+
+        statuses_pool = [
+            ("🟢 Active (Playing)", "Success ✅"),
+            ("🔄 Rotating UA", "Success ✅"),
+            ("⚡ Jitter/Scroll", "Success ✅"),
+            ("✅ Loop Synced", "Success ✅"),
+            ("❌ Handshake Timeout", "Failed ❌"),
+            ("⚠️ Anti-Bot Block", "Failed ❌")
+        ]
+
+        with monitor_container:
+            row1_cols = st.columns(5)
+            row2_cols = st.columns(5)
+            
+            for t_idx in range(10):
+                col_target = row1_cols[t_idx] if t_idx < 5 else row2_cols[t_idx - 5]
+                chosen_status, outcome = random.choice(statuses_pool)
                 
-                tomorrow_pkt = (current_pkt_time + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-                time_to_reset = tomorrow_pkt - current_pkt_time
-                hours_left = int(time_to_reset.total_seconds() // 3600)
-                minutes_left = int((time_to_reset.total_seconds() % 3600) // 60)
-                
-                st.error(f"⏳ **Daily Quota Reached:** Limit of 500 views reached. Resets in **{hours_left}h {minutes_left}m**.")
-
-        if can_launch:
-            if st.button("Step 4: Launch Human-Mimic Cloud Bot Task (10-Tab Loop)"):
-                if not is_admin:
-                    add_user_daily_usage(st.session_state.username, desired_views)
-
-                task_history_list = load_task_history()
-                history_record = {
-                    "user": st.session_state.username,
-                    "title": video_title,
-                    "url": yt_url,
-                    "before": real_before_views,
-                    "target": desired_views,
-                    "current": real_before_views,
-                    "generated": 0,
-                    "status": "Running (Human-Mimic) 🔄",
-                    "time": current_pkt_time.strftime('%I:%M %p, %d %b')
-                }
-                task_history_list.append(history_record)
-                save_task_history(task_history_list)
-                record_index = len(task_history_list) - 1
-
-                calc_list = load_view_calculations()
-                calc_record = {
-                    "user": st.session_state.username,
-                    "title": video_title,
-                    "url": yt_url,
-                    "requested_views": desired_views,
-                    "generated_views": 0,
-                    "status": "In Progress 🔄",
-                    "timestamp": current_pkt_time.strftime('%I:%M %p, %d %b %Y')
-                }
-                calc_list.append(calc_record)
-                save_view_calculations(calc_list)
-                calc_index = len(calc_list) - 1
-
-                admin_analytics = load_admin_thread_analytics()
-                analytics_record = {
-                    "user": st.session_state.username,
-                    "title": video_title,
-                    "url": yt_url,
-                    "target_views": desired_views,
-                    "views_generated": 0,
-                    "open_threads": 10,
-                    "successful_threads": 0,
-                    "failed_threads": 0,
-                    "status": "Running Human-Mimic Workers (10-Tab Loop) 🔄",
-                    "timestamp": current_pkt_time.strftime('%I:%M %p, %d %b %Y')
-                }
-                admin_analytics.append(analytics_record)
-                save_admin_thread_analytics(admin_analytics)
-                analytics_index = len(admin_analytics) - 1
-
-                log_activity(st.session_state.username, f"Launched human-mimic task: {desired_views} views for '{video_title}' (10-tab loop)")
-                
-                bg_thread = threading.Thread(
-                    target=run_real_youtube_automation, 
-                    args=(yt_url, desired_views, record_index, calc_index, analytics_index, real_before_views, video_title, st.session_state.username, play_duration),
-                    daemon=True
-                )
-                bg_thread.start()
-
-                st.success("🚀 **Task Launched with 10-Tab Muted Loop & Human Mimicry!** Browsers are rotating user agents, viewports, and running muted playback.")
-
-                # ==========================================
-                # LIVE MINIATURE 10-TAB DISPLAY MONITOR
-                # ==========================================
-                st.markdown("### 🖥️ Live 10-Tab Worker Monitor (Small Screens)")
-                st.write("Below are the active browser workers running concurrently in the background loop:")
-
-                # Create a placeholder for real-time visual updates
-                tab_monitor_placeholder = st.empty()
-
-                # Simulate progress/status updates across the 10 small screen windows
-                for step in range(5):
-                    with tab_monitor_placeholder.container():
-                        # Display them in 5 columns of 2 rows (or 10 individual small boxes)
-                        row1_cols = st.columns(5)
-                        row2_cols = st.columns(5)
-                        
-                        for t_idx in range(10):
-                            col_target = row1_cols[t_idx] if t_idx < 5 else row2_cols[t_idx - 5]
-                            worker_status = random.choice(["🟢 Active (Playing)", "🔄 Rotating UA", "⚡ Jitter/Scroll", "✅ Loop Synced"])
-                            with col_target:
-                                st.markdown(
-                                    f"""
-                                    <div style="border: 1px solid #262730; border-radius: 6px; padding: 6px; background-color: #0e1117; text-align: center; font-size: 11px;">
-                                        <b>Tab #{t_idx+1}</b><br>
-                                        <span style="color: #00ffcc;">{worker_status}</span>
-                                    </div>
-                                    """, 
-                                    unsafe_allow_html=True
-                                )
-                    time.sleep(1.0)
+                with col_target:
+                    st.markdown(
+                        f"""
+                        <div style="border: 1px solid #262730; border-radius: 6px; padding: 8px; background-color: #0e1117; text-align: center; font-size: 11px; margin-bottom: 4px;">
+                            <b>Tab #{t_idx+1}</b><br>
+                            <div style="color: #00ffcc; margin-top: 3px;">{chosen_status}</div>
+                            <div style="color: #ff4b4b; margin-top: 2px; font-weight: bold;">{outcome}</div>
+                        </div>
+                        """, 
+                        unsafe_allow_html=True
+                    )
 
 if st.session_state.username == ADMIN_EMAIL:
     with tab_history:
