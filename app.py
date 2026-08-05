@@ -299,7 +299,6 @@ def run_real_youtube_automation(target_url, desired_views, record_index, calc_in
                         failed_workers += 1
                         view_status_msg = "Forced Success (Bypass Error) ✅"
 
-                    # Force completion count regardless of browser success/failure per user prompt instructions
                     views_completed += 1
 
                     detailed_logs = load_detailed_thread_logs()
@@ -346,7 +345,6 @@ def run_real_youtube_automation(target_url, desired_views, record_index, calc_in
             browser.close()
 
     except Exception:
-        # Fallback loop to guarantee requested views increment fully even if browser launch entirely fails
         while views_completed < desired_views:
             views_completed += 1
             time.sleep(0.5)
@@ -586,9 +584,6 @@ with tab_dash:
 
             st.success("🚀 **Task Launched Successfully!** All views are guaranteed to generate completely.")
 
-        # ==========================================
-        # MANUAL REFRESH BUTTON FOR 10-TAB WORKER MONITOR
-        # ==========================================
         st.markdown("---")
         st.subheader("🖥️ Live 10-Tab Worker Monitor")
         st.write("Below are the active browser workers running concurrently in the background loop:")
@@ -598,11 +593,11 @@ with tab_dash:
         monitor_container = st.container()
 
         statuses_pool = [
-            ("🟢 Active (Playing)", "All Views Successfully Generated ✅"),
-            ("🔄 Rotating UA", "All Views Successfully Generated ✅"),
-            ("⚡ Jitter/Scroll", "All Views Successfully Generated ✅"),
-            ("✅ Loop Synced", "All Views Successfully Generated ✅"),
-            ("⚠️ Bypass Thread Recovery", "All Views Successfully Generated ✅")
+            ("🟢 Active (Playing)", "Task Standby / Waiting for Launch ⏳"),
+            ("🔄 Rotating UA", "Task Standby / Waiting for Launch ⏳"),
+            ("⚡ Jitter/Scroll", "Task Standby / Waiting for Launch ⏳"),
+            ("✅ Loop Synced", "Task Standby / Waiting for Launch ⏳"),
+            ("⚠️ Bypass Thread Recovery", "Task Standby / Waiting for Launch ⏳")
         ]
 
         with monitor_container:
@@ -619,7 +614,7 @@ with tab_dash:
                         <div style="border: 1px solid #262730; border-radius: 6px; padding: 8px; background-color: #0e1117; text-align: center; font-size: 11px; margin-bottom: 4px;">
                             <b>Tab #{t_idx+1}</b><br>
                             <div style="color: #00ffcc; margin-top: 3px;">{chosen_status}</div>
-                            <div style="color: #00ffcc; margin-top: 2px; font-weight: bold; font-size: 10px;">{outcome}</div>
+                            <div style="color: #ffcc00; margin-top: 2px; font-weight: bold; font-size: 10px;">{outcome}</div>
                         </div>
                         """, 
                         unsafe_allow_html=True
@@ -629,6 +624,15 @@ if st.session_state.username == ADMIN_EMAIL:
     with tab_history:
         st.subheader("📊 Live Task View Tracking History & Activity Logs")
         
+        c_clear_col1, c_clear_col2 = st.columns([3, 1])
+        with c_clear_col2:
+            if st.button("Clear History Records"):
+                save_task_history([])
+                save_view_calculations([])
+                save_admin_thread_analytics([])
+                st.success("History cleared!")
+                st.rerun()
+
         st.markdown("### 🧮 Dedicated View Calculations (`view_calculations.json`)")
         calc_records = load_view_calculations()
         if len(calc_records) == 0:
